@@ -11,6 +11,7 @@
 			"svelte": "./src/index.ts",
 			"default": "./src/index.ts"
 		},
+		"./lib/*": "./src/lib/*.ts",
 		"./styles/*": "./src/styles/*",
 		"./static/*": "./static/*"
 	},

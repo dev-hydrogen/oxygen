@@ -230,12 +230,18 @@ importers:
       '@oxygen/format':
         specifier: workspace:*
         version: link:../../packages/format
+      '@oxygen/gamelink':
+        specifier: workspace:*
+        version: link:../../packages/gamelink
       '@oxygen/lang':
         specifier: workspace:*
         version: link:../../packages/lang
       '@oxygen/metadata':
         specifier: workspace:*
         version: link:../../packages/metadata
+      '@oxygen/testpack':
+        specifier: workspace:*
+        version: link:../../packages/testpack
       '@oxygen/ui':
         specifier: workspace:*
         version: link:../../packages/ui

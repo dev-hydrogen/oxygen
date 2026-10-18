@@ -37,7 +37,7 @@ Relative file paths are relative to the folder the agent starts the server in, u
 
 | Tool | What it does |
 | --- | --- |
-| `reference` | The particle format and how the game really behaves: every component with its fields, defaults and when the game evaluates them; materials; Molang queries and math; and the [game rules](accuracy.md) Oxygen measured in Minecraft |
+| `reference` | The particle format and how the game really behaves: every component with its fields, defaults and when the game evaluates them; materials; Molang queries and math; the [game rules](accuracy.md) Oxygen measured in Minecraft; and `measurements`, each in-game test with its recorded result |
 | `list_examples` | The bundled examples, to start from |
 | `create_effect` | A new effect file from Oxygen's starting effect or a copy of an example under a new identifier |
 | `read_effect` | A summary of an effect: components, curves, events and what they spawn, variables and where they're set and read, scenarios, problems |
@@ -47,12 +47,38 @@ Relative file paths are relative to the folder the agent starts the server in, u
 | `simulate_effect` | Runs the effect and reports, at chosen times, how many particles are alive and drawn, where they are, which emitters and events ran, and runtime problems such as unset variables or the particle cap |
 | `preview_effect` | Pictures of the effect at chosen times, by default on one labelled sheet, with the same numbers. Optionally saves the PNGs, and can leave the pictures out of the reply once saved (`return_images: false`) |
 | `open_in_editor` | Opens the file in the Oxygen desktop app for you to look at and play with |
+| `record_gif` | An animated GIF of the effect, drawn by the same viewport, saved to a file (a few of its frames come back in the reply) |
+
+For understanding how an effect is evaluated, and debugging it:
+
+| Tool | What it does |
+| --- | --- |
+| `inspect_effect` | Everything the engine holds at a moment: every particle (position, velocity, age, lifetime, its randoms, size, UV, colour, facing), every emitter with its lifetime state and variable map, query values and temps |
+| `trace_effect` | Every Molang evaluation of one particle and its emitter during a frame, in the order the game runs them, with the value of every part of each expression and the variables it changed. `particle: "next"` catches a particle from its very first evaluation |
+| `log_effect` | Every evaluation of every emitter and particle during a frame, in execution order |
+| `evaluate_molang` | Runs Molang inside the effect without changing it. With `at` (a field's path) it runs at the exact moment that field is evaluated, for each particle: what each particle saw in the variables they share, which is how effects with index counters or render-pass layouts work. Without an effect, it runs on its own with the values you give |
+| `track_effect` | Values frame by frame: particle attributes, a field's value over each particle's age, or emitter variables |
+| `analyze_molang` | Checks an expression without running it: errors as the game reports them, what it reads and writes, the rules for a pack version, formatted forms |
+
+And Minecraft itself, through the same link as the desktop app's Game menu:
+
+| Tool | What it does |
+| --- | --- |
+| `game_status` | The installs on this machine and whether a game is connected |
+| `game_connect` | Listens for `/connect` from the game |
+| `game_deploy` | Copies the pack into the game's development folders (and, optionally, Oxygen Link for script-style spawns) |
+| `game_spawn` | Spawns an effect in front of the player, like `/particle` or a script with variables |
+| `game_command` | Runs a command |
+| `game_log` | What the game's content log says about particle files since the last deploy |
 
 Previews and simulations play the effect the way `/particle` does unless asked otherwise (`spawn`: `script` or
 `entity`), and play it once, like the game. They use a fixed clock and the same random seed every time, so the
 same file always gives the same pictures and numbers. The camera frames every particle across the chosen times,
 from an angle the agent picks; it can also be placed by hand or taken from a view saved in the file. The ground
 grid sits at y = 0 and the small outlined cube is one block.
+
+The debugging tools replay the effect the same way, so a `time` names one frame exactly: the one that reaches
+it. They run in the editor's own session, so what they report is what the editor shows.
 
 Other effects can play in the same scene (`others`: identifiers and positions), like the Scene panel's "Other
 effects". Without `others`, the ones the file's scene keeps play, as in the editor.
@@ -81,4 +107,5 @@ with a `manifest.json`, or else the folder holding `particles/`. From the pack i
 - Pictures come from software rendering in headless Chromium. They show exactly what the editor's viewport
   shows, but each one takes a moment; a sheet of four 480 × 360 pictures takes one to two seconds.
 - `edit_effect` refuses a file that isn't valid JSON. Fix that with `write_effect`, which replaces the whole text.
-- The server doesn't talk to Minecraft. To try an effect in the game, use the desktop app's Game menu.
+- The game tools change things outside Oxygen: `game_deploy` writes into the game's development pack folders and
+  `game_command` runs commands in your world. Agents ask before calling tools like these unless you've allowed them.

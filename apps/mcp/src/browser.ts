@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http';
 import { extname, join, resolve } from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright';
 import { BUNDLED, packRoot, packText, textureFile } from './pack';
-import type { RunRequest, RunResult } from './protocol';
+import type { InspectRequest, InspectResult, RunRequest, RunResult } from './protocol';
 
 const TYPES: Record<string, string> = {
 	'.html': 'text/html; charset=utf-8',
@@ -31,18 +31,27 @@ export class PreviewBrowser {
 	private pageErrors: string[] = [];
 
 	run(request: RunRequest): Promise<RunResult & { pageErrors: string[] }> {
-		const next = this.queue.then(() => this.runNow(request));
+		return this.enqueue((page) => page.evaluate((r) => window.oxygenPreview.run(r), request));
+	}
+
+	/** A debugging question about the running effect (preview/inspect.ts) */
+	inspect(request: InspectRequest): Promise<InspectResult & { pageErrors: string[] }> {
+		return this.enqueue((page) => page.evaluate((r) => window.oxygenPreview.inspect(r), request));
+	}
+
+	private enqueue<T>(work: (page: Page) => Promise<T>): Promise<T & { pageErrors: string[] }> {
+		const next = this.queue.then(() => this.runNow(work));
 		this.queue = next.catch(() => undefined);
 		return next;
 	}
 
-	private async runNow(request: RunRequest): Promise<RunResult & { pageErrors: string[] }> {
+	private async runNow<T>(work: (page: Page) => Promise<T>): Promise<T & { pageErrors: string[] }> {
 		const page = await this.open();
 		this.pageErrors = [];
 		const { promise: timeout, reject } = Promise.withResolvers<never>();
 		const timer = setTimeout(() => reject(new Error(`The preview took longer than ${RUN_TIMEOUT_MS / 1000} s; try fewer or earlier sample times.`)), RUN_TIMEOUT_MS);
 		try {
-			const result = await Promise.race([page.evaluate((r) => window.oxygenPreview.run(r), request), timeout]);
+			const result = await Promise.race([work(page), timeout]);
 			return { ...result, pageErrors: [...this.pageErrors] };
 		} catch (e) {
 			// a stuck, crashed or half-finished page is replaced on the next call

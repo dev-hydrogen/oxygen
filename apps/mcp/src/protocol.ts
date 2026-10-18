@@ -90,8 +90,60 @@ export interface RunResult {
 	camera: { position: Vec3; target: Vec3; fov: number } | null;
 }
 
+/** The effect and how it plays, without what to sample or draw */
+export type SessionRequest = Omit<RunRequest, 'times' | 'render'> & {
+	/** what the simulation's camera looks from and at (culling, camera queries, facing); default the editor's */
+	camera: { position: Vec3; target: Vec3; fov?: number } | null;
+};
+
+export type Phase = 'creation' | 'emitter-update' | 'spawn' | 'particle-update' | 'render' | 'event';
+
+/**
+ * A question about the running effect. Every one replays the effect from its spawn on the fixed clock, so `time`
+ * picks a frame exactly: the frame that reaches it.
+ */
+export type InspectQuery =
+	| {
+			op: 'state';
+			time: number;
+			particles: { emitter: number | null; effect: string | null; ids: number[] | null; fields: string[] | null; sort: 'id' | 'age' | 'distance' | 'x' | 'y' | 'z' | 'speed'; descending: boolean; limit: number; offset: number; facing: boolean };
+			variables: boolean;
+	  }
+	| { op: 'trace'; time: number; particle: number | 'next' | null; emitter: number | null; frames: number; path: string | null; phase: Phase | null; detail: 'full' | 'brief'; limit: number }
+	| { op: 'log'; time: number; frames: number; path: string | null; phase: Phase | null; emitter: number | null; particle: number | null; limit: number; offset: number }
+	| { op: 'evaluate'; time: number; expression: string; emitter: number | null; particle: number | null }
+	| { op: 'moments'; time: number; expression: string; path: string; when: 'before' | 'after'; effect: string | null; emitter: number | null; particle: number | null; limit: number; parts: boolean }
+	| {
+			op: 'track';
+			from: number;
+			to: number;
+			every: number;
+			particles: number[] | null;
+			count: number;
+			emitter: number | null;
+			attributes: string[];
+			path: string | null;
+			variables: string[] | null;
+	  }
+	| { op: 'gif'; from: number; to: number; fps: number; width: number; height: number; mode: 'classic' | 'vv'; camera: CameraRequest; ground: boolean; gizmos: boolean; captions: boolean; previews: number };
+
+export interface InspectRequest extends SessionRequest {
+	query: InspectQuery;
+}
+
+export interface InspectResult {
+	/** the answer, as JSON */
+	data: Record<string, unknown>;
+	/** base64 GIF, for `gif` */
+	gif?: string;
+	/** PNG data URLs (a contact sheet of some of the GIF's frames) */
+	images?: string[];
+	missingTextures: string[];
+}
+
 export interface PreviewApi {
 	run(request: RunRequest): Promise<RunResult>;
+	inspect(request: InspectRequest): Promise<InspectResult>;
 }
 
 declare global {

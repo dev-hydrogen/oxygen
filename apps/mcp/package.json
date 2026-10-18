@@ -22,6 +22,8 @@
 		"@oxygen/format": "workspace:*",
 		"@oxygen/lang": "workspace:*",
 		"@oxygen/metadata": "workspace:*",
+		"@oxygen/gamelink": "workspace:*",
+		"@oxygen/testpack": "workspace:*",
 		"@oxygen/ui": "workspace:*",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@types/three": "^0.186.0",

@@ -1,89 +1,10 @@
 // The headless preview the MCP server drives through Playwright: Oxygen's own session and viewport, stepped
 // with a fixed clock instead of the animation loop, so a request always gives the same pictures and numbers.
-import { DefaultLoadingManager } from 'three';
-import { parse as parseJsonc } from 'jsonc-parser';
 import { readMeta } from '@oxygen/format';
-import { DEFAULT_GIZMOS, EffectSession, ViewportScene, Workspace, createMersProvider, createTextureProvider, type FileRef, type Host } from '@oxygen/ui';
-import type { CameraRequest, EmitterSummary, PreviewApi, RunProblem, RunRequest, RunResult, SampleStats, Vec3 } from '../src/protocol';
-
-/** the simulation step: the editor's 60 fps */
-const DT = 1 / 60;
-
-/** default viewing directions (from the target toward the camera) */
-const ANGLES: Record<Extract<CameraRequest, { kind: 'auto' }>['angle'], Vec3> = {
-	iso: [3.6, 2.8, 5.2],
-	front: [0, 0.35, 1],
-	side: [1, 0.35, 0],
-	top: [0, 1, 0.02],
-	bottom: [0, -1, 0.02],
-};
-
-// Texture loads in flight: the fetch through the server, then three's image decode. A picture is taken only
-// once a frame draws without starting new loads.
-let loading = 0;
-let requests = 0;
-const manager = DefaultLoadingManager;
-const itemStart = manager.itemStart.bind(manager);
-const itemEnd = manager.itemEnd.bind(manager);
-manager.itemStart = (url) => {
-	loading++;
-	itemStart(url);
-};
-manager.itemEnd = (url) => {
-	loading--;
-	itemEnd(url);
-};
-
-function sleep(ms: number): Promise<void> {
-	const { promise, resolve } = Promise.withResolvers<void>();
-	setTimeout(resolve, ms);
-	return promise;
-}
-
-/** times and coordinates reported to the millisecond / millimetre */
-const round3 = (x: number) => Math.round(x * 1000) / 1000;
-
-function makeHost(missing: Set<string>, blobs: string[]): Host {
-	/** Fetch a file of the effect's pack through the server; it counts as a load in flight until `use` is done */
-	const fromPack = async <T>(kind: 'texture' | 'pack-text', file: FileRef, path: string, use: (r: Response) => Promise<T>): Promise<T> => {
-		requests++;
-		loading++;
-		try {
-			return await use(await fetch(`./api/${kind}?file=${encodeURIComponent(file.id ?? '')}&path=${encodeURIComponent(path)}`));
-		} finally {
-			loading--;
-		}
-	};
-	return {
-		kind: 'web',
-		save: async () => null,
-		examples: async () => [],
-		resolveTexture: (texture, file) =>
-			fromPack('texture', file, texture, async (r) => {
-				if (!r.ok) {
-					missing.add(texture);
-					return null;
-				}
-				const url = URL.createObjectURL(await r.blob());
-				blobs.push(url);
-				return url;
-			}),
-		readPackText: (path, file) => fromPack('pack-text', file, path, async (r) => (r.ok ? r.text() : null)),
-		loadSettings: async () => ({}),
-		saveSettings: () => {},
-	};
-}
-
-/** Draw paused frames until one draws without asking for anything new, and every load has finished */
-async function settle(scene: ViewportScene): Promise<void> {
-	for (let round = 0; round < 40; round++) {
-		const before = requests;
-		scene.frame(0);
-		await sleep(0);
-		for (let i = 0; i < 2000 && loading > 0; i++) await sleep(5);
-		if (requests === before) return;
-	}
-}
+import { DEFAULT_GIZMOS, type EffectSession } from '@oxygen/ui';
+import type { EmitterSummary, PreviewApi, RunProblem, RunRequest, RunResult, SampleStats, Vec3 } from '../src/protocol';
+import { inspect } from './inspect';
+import { closeScene, DT, framing, openScene, openSession, restartClean, round3, settle } from './session';
 
 function measure(session: EffectSession, time: number): SampleStats {
 	const p: Vec3 = [0, 0, 0];
@@ -139,22 +60,8 @@ async function contactSheet(urls: string[], labels: string[], w: number, h: numb
 }
 
 async function run(req: RunRequest): Promise<RunResult> {
-	const missing = new Set<string>();
-	const blobs: string[] = [];
-	const host = makeHost(missing, blobs);
-	const children = new Map<string, unknown>();
-	for (const [id, text] of Object.entries(req.effects)) children.set(id, parseJsonc(text, [], { allowTrailingComma: true }));
-
-	const session = new EffectSession(req.text, req.file, { engine: req.engine, findChild: (id) => children.get(id) ?? null });
-	// worker threads would make stepping asynchronous: keep the whole world on this thread
-	session.parallel.unavailable = true;
-	session.setParentInputs(req.parents);
-	if (req.timeOfDay !== null) session.timeOfDay = req.timeOfDay;
-	if (req.spawn && session.spawnMode !== req.spawn) session.setSpawnMode(req.spawn);
-	// every play starts with a restart, which spawns these too
-	if (req.extras) session.setScene({ extras: req.extras.length ? req.extras : undefined }, false);
-	session.loopPreview = req.repeat;
-	await new Workspace(host).loadPackVisuals(session);
+	const opened = await openSession({ ...req, camera: null });
+	const { session, missing } = opened;
 
 	// every event fired and every emitter seen, counted exactly (the Timeline panel keeps a capped window)
 	let events = new Map<string, Map<string, { count: number; first: number }>>();
@@ -181,13 +88,7 @@ async function run(req: RunRequest): Promise<RunResult> {
 	const r = req.render;
 	const width = r?.width ?? 320;
 	const height = r?.height ?? 240;
-	const canvas = document.createElement('canvas');
-	canvas.style.width = `${width}px`;
-	canvas.style.height = `${height}px`;
-	document.body.append(canvas);
-	const scene = new ViewportScene(canvas, { textures: createTextureProvider(host, () => session), mers: createMersProvider(host, () => session) });
-	scene.resize(width, height);
-	scene.setSession(session);
+	const { scene, canvas } = openScene(opened, width, height);
 	if (r) {
 		scene.renderMode = r.mode;
 		scene.gizmos = { ...DEFAULT_GIZMOS, ground: r.ground, block: r.ground, emitter: r.gizmos, children: r.gizmos, killPlane: r.gizmos };
@@ -203,7 +104,7 @@ async function run(req: RunRequest): Promise<RunResult> {
 		peak = { particles: 0, time: 0 };
 		finishedAt = null;
 		now = 0;
-		session.restart();
+		restartClean(session);
 		session.playing = true;
 		noteEmitters();
 		for (const t of req.times) {
@@ -249,17 +150,7 @@ async function run(req: RunRequest): Promise<RunResult> {
 					grow(s.bounds.max);
 				} else for (const e of session.world.emitters) grow(e.position);
 			});
-			if (lo[0] === Infinity) {
-				grow([-1, -0.5, -1]);
-				grow([1, 1.5, 1]);
-			}
-			const center: Vec3 = [0, 1, 2].map((k) => (lo[k] + hi[k]) / 2) as Vec3;
-			const radius = Math.max(0.25, Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 2);
-			const fov = 70;
-			const dist = (radius / Math.sin((fov * Math.PI) / 360)) * 1.1 / Math.max(0.05, cam.zoom);
-			const d = ANGLES[cam.angle];
-			const len = Math.hypot(d[0], d[1], d[2]);
-			view = { position: [0, 1, 2].map((k) => center[k] + (d[k] / len) * dist) as Vec3, target: center, fov };
+			view = framing(lo, hi, cam.angle, cam.zoom);
 		}
 		scene.setView({ position: view.position, target: view.target, fov: view.fov ?? 70 });
 		await play(async (s) => {
@@ -298,11 +189,8 @@ async function run(req: RunRequest): Promise<RunResult> {
 	const images = r && shots.length > 1 && r.sheet ? [await contactSheet(shots, samples.map((s) => `${s.time.toFixed(2)} s · ${s.particles} particles`), width, height)] : shots;
 	const camera = r ? { position: scene.view().position, target: scene.view().target, fov: scene.view().fov } : null;
 
-	scene.dispose();
-	scene.renderer.forceContextLoss();
-	canvas.remove();
-	session.dispose();
-	for (const url of blobs) URL.revokeObjectURL(url);
+	closeScene(scene, canvas);
+	opened.close();
 
 	return {
 		identifier: session.identifier,
@@ -317,5 +205,5 @@ async function run(req: RunRequest): Promise<RunResult> {
 	};
 }
 
-const api: PreviewApi = { run };
+const api: PreviewApi = { run, inspect };
 window.oxygenPreview = api;

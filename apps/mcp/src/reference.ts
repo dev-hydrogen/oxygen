@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CATEGORIES, COMPONENT_BY_ID, COMPONENTS, MATERIALS, PHASES, type FieldKind } from '@oxygen/format';
 import { getQuery, molangMetadata } from '@oxygen/metadata';
+import { TESTS } from '@oxygen/testpack';
+import measured from '../../../packages/testpack/fixtures/ingame-1.26.52.json';
 import { BUNDLED } from './pack';
 
 /** Oxygen's own guides, copied next to the server at build time */
@@ -50,7 +52,21 @@ const USAGE = [
 	'- <query name>, e.g. q.distance_from_camera: one query',
 	'- math: Molang math functions',
 	...Object.entries(GUIDES).map(([k, g]) => `- ${k}: ${g.about}`),
+	"- measurements (optionally with search): every behaviour Oxygen's test pack measured in Minecraft, test by test, with the recorded result",
 ].join('\n');
+
+/** The in-game test results: each test's question and what the game did */
+function measurements(search: string | null): string {
+	const results = (measured as { results: Record<string, { conclusion?: string }> }).results;
+	const s = search?.toLowerCase() ?? '';
+	const lines = [`Measured in Minecraft ${measured.game} (${measured.date}); Oxygen's engine reproduces every result. What the content log reports at load:`, ...measured.loadLog.map((l: string) => `- ${l}`)];
+	for (const t of TESTS) {
+		const conclusion = results[t.id]?.conclusion ?? '(not recorded)';
+		if (s && !`${t.id} ${t.title} ${t.question} ${conclusion}`.toLowerCase().includes(s)) continue;
+		lines.push('', `${t.id}. ${t.title}`, `Question: ${t.question}`, `Measured: ${conclusion}`);
+	}
+	return lines.join('\n');
+}
 
 export function reference(topic: string, search: string | null): string {
 	const t = topic.trim();
@@ -74,6 +90,7 @@ export function reference(topic: string, search: string | null): string {
 	}
 	if (lower === 'materials') return ['Materials (description/basic_render_parameters/material):', ...MATERIALS.map((m) => `- ${m.value}: ${m.label}. ${m.help}`)].join('\n');
 	if (lower === 'phases') return ['Evaluation phases, in order:', ...PHASES.map((p) => `- ${p.id}: ${p.label}. ${p.detail}`)].join('\n');
+	if (lower === 'measurements') return measurements(search);
 	if (lower === 'math') return ['Math functions:', ...molangMetadata.math.map((m) => `- ${m.name}(${m.params.join(', ')}): ${m.description}`)].join('\n');
 	if (lower === 'queries') {
 		const s = search?.toLowerCase() ?? '';

@@ -10,6 +10,10 @@
   formatting or rewrite them whole, check them, simulate them and render previews with Oxygen's viewport, with
   other effects playing alongside, and open them in the desktop app for you. See
   [Oxygen for coding agents](https://github.com/dev-hydrogen/oxygen/blob/main/docs/agents.md).
+- The MCP server can also debug effects: every Molang evaluation of a particle with the value of each part, all
+  evaluations of a frame in order, the engine's full state at any moment, values over time, Molang evaluated at
+  the exact moment a field runs for each particle (for effects that share values between particles), static Molang
+  analysis, animated GIFs, and a link to Minecraft itself (deploy, spawn, commands, content log).
 - The desktop app keeps one window: opening a file while it runs (from the command line, a file manager or an
   agent) opens it there, or brings its tab forward.
 
@@ -17,7 +21,12 @@
 
 - A paused preview drew effects that count particles in their render expression (spiral galaxy, aurora,
   lightning, magic circle and others) wrong: every redraw advanced the count, so colours and sizes drifted.
-  Redrawing a paused frame, or one scrubbed to, now shows it as it played.
+  Redrawing a paused frame, or one scrubbed to, now shows it as it played. This now also holds for scenes big
+  enough to run on several threads.
+- A looping emitter starting its next loop kept the last loop's particles in its own pool: they counted toward the
+  new loop's particle cap and shared its variables. With Repeat on, the aurora example's second burst was cut to
+  100 particles, bunched at one end, by the cap and its index counter. Each loop now gets an emitter of its own, as
+  in the game, and the last loop's particles finish with theirs.
 
 ## Oxygen 0.1.0
 

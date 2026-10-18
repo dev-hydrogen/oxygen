@@ -13,6 +13,10 @@ import { analyze, applyEdits, formatProblems, load, newEffectText, rewriteDiff, 
 import { BUNDLED, childEffects, effectIndex, examples, packRoot, textureFile } from './pack';
 import type { CameraRequest, RunRequest, RunResult, Vec3 } from './protocol';
 import { reference } from './reference';
+import { sessionRequest } from './requests';
+import { existing, text, tool } from './util';
+import { registerDebugTools } from './debug-tools';
+import { registerGameTools } from './game';
 
 const VERSION = '0.1.1';
 
@@ -34,22 +38,6 @@ const othersSchema = z
 	.optional()
 	.describe("Other effects playing in the same scene, like the Scene panel's \"Other effects\". Default: the ones the file's scene keeps; [] for none");
 
-/** Run a tool body, turning a thrown error into a tool error the agent can read */
-async function tool(work: () => Promise<CallToolResult> | CallToolResult): Promise<CallToolResult> {
-	try {
-		return await work();
-	} catch (e) {
-		return { isError: true, content: [{ type: 'text', text: e instanceof Error ? e.message : String(e) }] };
-	}
-}
-
-const text = (t: string): CallToolResult => ({ content: [{ type: 'text', text: t }] });
-
-function existing(path: string): string {
-	const p = resolve(path);
-	if (!existsSync(p)) throw new Error(`No file at ${p}`);
-	return p;
-}
 
 /** Sample times: given ones, or `samples` evenly spread over `duration` (the first a frame in) */
 function sampleTimes(times: number[] | undefined, duration: number, samples: number): number[] {
@@ -60,16 +48,9 @@ function sampleTimes(times: number[] | undefined, duration: number, samples: num
 }
 
 function runRequest(path: string, o: { times: number[]; spawn?: SpawnMode; repeat: boolean; timeOfDay?: number; render: RunRequest['render']; others?: { effect: string; position?: number[] }[] }): { request: RunRequest; missingChildren: string[] } {
-	const e = load(path, o.spawn);
-	const extras = o.others?.map((x, i) => ({ effect: x.effect, position: (x.position ?? [3 * (i + 1), 0, 0]) as Vec3 })) ?? null;
-	// what plays besides the effect: the effects asked for, else the ones the file's scene keeps
-	const saved = readMeta(e.doc).scene?.extras;
-	const sceneIds = extras ? extras.map((x) => x.effect) : Array.isArray(saved) ? saved.flatMap((x: { effect?: unknown } | null) => (typeof x?.effect === 'string' ? [x.effect] : [])) : [];
-	const { effects, missing } = childEffects(e.doc.text, effectIndex(e.root), sceneIds);
-	return {
-		request: { text: e.doc.text, file: { name: basename(path), id: path }, effects, engine: e.engine, times: o.times, spawn: o.spawn ?? null, repeat: o.repeat, render: o.render, timeOfDay: o.timeOfDay ?? null, parents: e.parents, extras },
-		missingChildren: missing,
-	};
+	const { request, missingChildren } = sessionRequest(path, o);
+	const { camera: _camera, ...rest } = request;
+	return { request: { ...rest, times: o.times, render: o.render }, missingChildren };
 }
 
 /** The numbers of a run, as a report */
@@ -106,6 +87,8 @@ const server = new McpServer({ name: 'oxygen', version: VERSION }, {
 		'3. edit_effect for formatting-preserving edits by JSON path, write_effect to replace the whole text; read_effect / check_effect to see structure and problems.',
 		'4. simulate_effect for numbers over time (particle counts, bounds, events); preview_effect to see it rendered.',
 		'5. open_in_editor to show the effect to the user in the Oxygen desktop app, which follows later edits live.',
+		'To understand or debug how an effect is evaluated: inspect_effect (every particle and emitter at a moment, with variable maps), trace_effect (every Molang evaluation of a particle with the value of each part), log_effect (all evaluations of a frame in order), evaluate_molang (Molang inside the effect; with `at`, at the exact moment a field runs for each particle, which is what each particle saw when particles share variables), track_effect (values over time) and analyze_molang. record_gif saves an animation.',
+		'game_* tools reach Minecraft itself: deploy the pack, spawn the effect through /connect, read the content log.',
 		'Paths in edits look like components/minecraft:particle_appearance_billboard/size or events/pop/particle_effect/effect.',
 	].join('\n'),
 });
@@ -388,6 +371,9 @@ server.registerTool(
 			return text(`Opening ${p} in Oxygen (via ${launch.via}).`);
 		}),
 );
+
+registerDebugTools(server, browser);
+registerGameTools(server);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 	process.on(signal, () => {
