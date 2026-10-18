@@ -23,7 +23,7 @@ export type { InspectorView } from './preferences';
 
 /** Sections of the Settings and About dialogs */
 export type SettingsSection = 'general' | 'preview' | 'viewport' | 'keyboard' | 'data';
-export type AboutSection = 'about' | 'new' | 'engine' | 'system' | 'credits';
+export type AboutSection = 'about' | 'new' | 'agents' | 'engine' | 'system' | 'credits';
 
 /** Open documents, the active one, and app-wide preferences */
 export class Workspace {

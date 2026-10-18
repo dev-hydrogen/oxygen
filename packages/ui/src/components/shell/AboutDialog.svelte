@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { AboutSection, Workspace } from '../../state/workspace.svelte';
-	import { CREDITS, DISCORD, HOSTS, REPO, VERSION, WEBSITE, engineFacts, factsText, systemFacts, type Fact } from '../../lib/about';
+	import { CREDITS, DISCORD, HOSTS, MCP_PROMPT, MCP_ZIP, REPO, VERSION, WEBSITE, engineFacts, factsText, systemFacts, type Fact } from '../../lib/about';
 	import { releases, type Inline } from '../../lib/markdown';
 	import changelog from '../../../../../CHANGELOG.md?raw';
 	import logoDark from '../../assets/logo-dark.png?inline';
@@ -16,6 +16,7 @@
 	const SECTIONS: { id: AboutSection; label: string }[] = [
 		{ id: 'about', label: 'Oxygen' },
 		{ id: 'new', label: 'What’s new' },
+		{ id: 'agents', label: 'Coding agents' },
 		{ id: 'engine', label: 'Engine' },
 		{ id: 'system', label: 'System' },
 		{ id: 'credits', label: 'Credits' },
@@ -26,6 +27,13 @@
 	const engine = engineFacts();
 	let system = $state<Fact[] | null>(null);
 	let copied = $state(false);
+	let promptCopied = $state(false);
+
+	async function copyPrompt() {
+		await navigator.clipboard.writeText(MCP_PROMPT);
+		promptCopied = true;
+		setTimeout(() => (promptCopied = false), 2000);
+	}
 
 	$effect(() => {
 		if (workspace.aboutOpen && section === 'system' && !system) void systemFacts(workspace.host).then((f) => (system = f));
@@ -83,7 +91,7 @@
 					<a class="link" href={REPO} target="_blank" rel="noreferrer">Source code</a>
 					<a class="link" href={`${REPO}/blob/main/docs/guide.md`} target="_blank" rel="noreferrer">Guide</a>
 					<a class="link" href={`${REPO}/blob/main/docs/accuracy.md`} target="_blank" rel="noreferrer">How it matches the game</a>
-					<a class="link" href={`${REPO}/blob/main/docs/agents.md`} target="_blank" rel="noreferrer">For coding agents (MCP)</a>
+					<button class="link" onclick={() => (workspace.aboutSection = 'agents')}>For coding agents (MCP)</button>
 					<a class="link" href={`${REPO}/issues/new`} target="_blank" rel="noreferrer">Report a problem</a>
 					<a class="link" href={DISCORD} target="_blank" rel="noreferrer">Discord</a>
 				</div>
@@ -109,6 +117,17 @@
 					</details>
 				{/each}
 				<a class="small" href={`${REPO}/blob/main/CHANGELOG.md`} target="_blank" rel="noreferrer">The changelog on GitHub</a>
+			{:else if section === 'agents'}
+				<p class="lede">
+					Oxygen’s MCP server lets coding agents such as Claude Code and Codex create particle effects, check them, simulate them and look at them with the same engine as this editor, and debug how every Molang expression is evaluated.
+				</p>
+				<p class="small">Copy this prompt into your agent: it downloads the server, installs it and adds it to itself. You need Node.js 22 or newer. Paste it again later to update.</p>
+				<pre class="prompt">{MCP_PROMPT}</pre>
+				<div class="actions">
+					<button class="btn primary" onclick={copyPrompt}>{promptCopied ? 'Copied' : 'Copy the prompt'}</button>
+					<a class="btn" href={MCP_ZIP} target="_blank" rel="noreferrer">Download the server</a>
+					<a class="btn" href={`${REPO}/blob/main/docs/agents.md`} target="_blank" rel="noreferrer">Setting it up by hand, and every tool</a>
+				</div>
 			{:else if section === 'engine'}
 				<p class="lede">The preview runs Oxygen’s own forks of Snowstorm’s engine and Molang interpreter, changed behaviour by behaviour to match measurements made in the game.</p>
 				{@render facts(engine)}
@@ -255,6 +274,29 @@
 	.link:hover,
 	.btn:hover {
 		background: var(--ox-hover);
+	}
+	.btn.primary {
+		background: var(--ox-lox);
+		border-color: var(--ox-lox);
+		color: #10131c;
+		font-weight: 600;
+	}
+	.btn.primary:hover {
+		background: #a6c9f7;
+	}
+	.prompt {
+		margin: 0;
+		padding: 10px 12px;
+		border: 1px solid var(--ox-rule);
+		border-radius: var(--ox-radius-float);
+		background: var(--ox-input);
+		font-family: var(--ox-font-code);
+		font-variation-settings: 'MONO' 1;
+		font-size: 11.5px;
+		line-height: 17px;
+		white-space: pre-wrap;
+		word-break: break-word;
+		user-select: text;
 	}
 	.actions {
 		display: flex;

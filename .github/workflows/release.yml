@@ -1,7 +1,8 @@
 name: Release
 
-# Push a version tag like 0.2.0 to build the desktop app on Windows, macOS and Linux and the VS Code extension, and
-# create a draft GitHub release with all of them. Review the draft and publish it from the Releases page.
+# Push a version tag like 0.2.0 to build the desktop app on Windows, macOS and Linux, the VS Code extension and the
+# MCP server zip, and create a draft GitHub release with all of them. Review the draft and publish it from the
+# Releases page.
 # Run it by hand (Actions › Release › Run workflow) to only build everything: the files are the run's artifacts.
 #
 # Publishing the extension is automatic when these repository secrets exist (otherwise those steps are skipped):
@@ -35,6 +36,13 @@ jobs:
         with:
           name: vsix
           path: apps/vscode/*.vsix
+      # the MCP server for coding agents, ready to unpack (docs/agents.md); its name has no version, so
+      # releases/latest/download/oxygen-mcp.zip always points at the newest
+      - run: pnpm package:mcp
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp
+          path: apps/mcp/release/oxygen-mcp.zip
 
   desktop:
     strategy:

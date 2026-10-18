@@ -10,6 +10,10 @@
   formatting or rewrite them whole, check them, simulate them and render previews with Oxygen's viewport, with
   other effects playing alongside, and open them in the desktop app for you. See
   [Oxygen for coding agents](https://github.com/dev-hydrogen/oxygen/blob/main/docs/agents.md).
+- Setting up the MCP server doesn't need a clone of the repository: each release carries it as `oxygen-mcp.zip`,
+  and a prompt has a coding agent install it for itself. Copy the prompt from *Help › Set up a coding agent…* or
+  from [Oxygen for coding agents](https://github.com/dev-hydrogen/oxygen/blob/main/docs/agents.md), which also
+  gives the commands for Claude Code and Codex.
 - The MCP server can also debug effects: every Molang evaluation of a particle with the value of each part, all
   evaluations of a frame in order, the engine's full state at any moment, values over time, Molang evaluated at
   the exact moment a field runs for each particle (for effects that share values between particles), static Molang

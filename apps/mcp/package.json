@@ -10,6 +10,7 @@
 	},
 	"scripts": {
 		"build": "node build.mjs",
+		"package": "node build.mjs && node package.mjs",
 		"start": "node dist/server.cjs",
 		"typecheck": "tsc --noEmit -p . && svelte-check --tsconfig ./preview/tsconfig.json"
 	},
@@ -27,6 +28,7 @@
 		"@oxygen/ui": "workspace:*",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@types/three": "^0.186.0",
+		"fflate": "^0.8.2",
 		"@types/node": "^24.0.0",
 		"esbuild": "^0.28.2",
 		"jsonc-parser": "^3.3.1",

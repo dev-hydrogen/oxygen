@@ -92,3 +92,21 @@ export async function systemFacts(host: Host): Promise<Fact[]> {
 }
 
 export const factsText = (title: string, facts: Fact[]) => [title, ...facts.map((f) => `${f.label}: ${f.value}`)].join('\n');
+
+/** Where the newest release keeps the MCP server, ready to unpack */
+export const MCP_ZIP = `${REPO}/releases/latest/download/oxygen-mcp.zip`;
+
+/**
+ * A prompt that has a coding agent install Oxygen's MCP server for itself. docs/agents.md has the same text (a
+ * test keeps them alike).
+ */
+export const MCP_PROMPT = `Set up the Oxygen MCP server for yourself, so you can create, check and preview Minecraft Bedrock particle effects with Oxygen's engine.
+
+1. Check that Node.js 22 or newer is installed (\`node --version\`). If it isn't, stop and tell me.
+2. Download ${MCP_ZIP} and unzip it into my home folder, so the server is at ~/oxygen-mcp/server.cjs (on Windows, %USERPROFILE%\\oxygen-mcp\\server.cjs). If that folder already exists, replace it.
+3. In that folder, run \`npm install --omit=dev\`, then \`npx playwright install chromium\`.
+4. Add it as an MCP server named "oxygen" for every project, running \`node\` with the absolute path to server.cjs as its only argument, over stdio:
+   - Claude Code: \`claude mcp add --scope user oxygen -- node <absolute path>/server.cjs\`
+   - Codex: \`codex mcp add oxygen -- node <absolute path>/server.cjs\`
+   - Any other agent: add \`"oxygen": { "command": "node", "args": ["<absolute path>/server.cjs"] }\` to the \`mcpServers\` in its MCP settings.
+5. Tell me if I need to restart you to load it. Once it's loaded, call its list_examples tool to check that it works.`;

@@ -46,8 +46,9 @@ menu) opens one of the bundled examples as a new file you can save into your pac
 files or a whole resource pack folder. The desktop app can also deploy your pack to Minecraft and spawn the
 effect in your world: run `/connect localhost:19131` in the game once, then use the Game menu.
 
-**Coding agents.** An MCP server lets agents such as Claude Code create, edit, check and preview effects with
-Oxygen's engine. See [Oxygen for coding agents](docs/agents.md).
+**Coding agents.** An MCP server lets agents such as Claude Code and Codex create, edit, check and preview effects
+with Oxygen's engine. To install it, paste the [setup prompt](docs/agents.md#the-quick-way-let-your-agent-do-it)
+into your agent. See [Oxygen for coding agents](docs/agents.md).
 
 New to the editor? The [user guide](docs/guide.md) walks through the panels and the usual tasks.
 

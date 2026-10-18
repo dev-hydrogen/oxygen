@@ -139,6 +139,7 @@
 			{ label: 'Molang reference', href: 'https://learn.microsoft.com/minecraft/creator/reference/content/molangreference/' },
 			{ separator: true },
 			{ label: "What's new", run: () => workspace.openAbout('new') },
+			{ label: 'Set up a coding agent…', title: 'A prompt that installs Oxygen’s MCP server in Claude Code, Codex and other agents', run: () => workspace.openAbout('agents') },
 			{ label: 'Report a problem', href: `${REPO}/issues/new` },
 			{ label: 'System information', run: () => workspace.openAbout('system') },
 			{ separator: true },

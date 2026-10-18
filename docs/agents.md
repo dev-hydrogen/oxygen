@@ -7,29 +7,68 @@ what players see in the game.
 
 ## Setting it up
 
-Build it once from a clone of this repository (see [building](building.md) for the setup):
+You need [Node.js](https://nodejs.org) 22 or newer.
+
+### The quick way: let your agent do it
+
+Copy this prompt into Claude Code, Codex or another coding agent. It downloads the server, installs it and adds it
+to the agent. Oxygen has the same prompt under *Help › Set up a coding agent…*, with a copy button.
+
+```text
+Set up the Oxygen MCP server for yourself, so you can create, check and preview Minecraft Bedrock particle effects with Oxygen's engine.
+
+1. Check that Node.js 22 or newer is installed (`node --version`). If it isn't, stop and tell me.
+2. Download https://github.com/dev-hydrogen/oxygen/releases/latest/download/oxygen-mcp.zip and unzip it into my home folder, so the server is at ~/oxygen-mcp/server.cjs (on Windows, %USERPROFILE%\oxygen-mcp\server.cjs). If that folder already exists, replace it.
+3. In that folder, run `npm install --omit=dev`, then `npx playwright install chromium`.
+4. Add it as an MCP server named "oxygen" for every project, running `node` with the absolute path to server.cjs as its only argument, over stdio:
+   - Claude Code: `claude mcp add --scope user oxygen -- node <absolute path>/server.cjs`
+   - Codex: `codex mcp add oxygen -- node <absolute path>/server.cjs`
+   - Any other agent: add `"oxygen": { "command": "node", "args": ["<absolute path>/server.cjs"] }` to the `mcpServers` in its MCP settings.
+5. Tell me if I need to restart you to load it. Once it's loaded, call its list_examples tool to check that it works.
+```
+
+Paste it again to update to a newer release.
+
+### By hand
+
+1. Download [oxygen-mcp.zip](https://github.com/dev-hydrogen/oxygen/releases/latest/download/oxygen-mcp.zip) from
+   the latest release and unzip it somewhere it can stay. It holds a folder, `oxygen-mcp`.
+2. In that folder, install Playwright and its headless Chromium, which the preview renders in:
+
+   ```sh
+   npm install --omit=dev
+   npx playwright install chromium
+   ```
+
+3. Add the server to your agent. It talks over stdio:
+
+   ```sh
+   claude mcp add --scope user oxygen -- node /path/to/oxygen-mcp/server.cjs   # Claude Code
+   codex mcp add oxygen -- node /path/to/oxygen-mcp/server.cjs                 # Codex
+   ```
+
+   Other agents take the same command in their MCP settings:
+
+   ```json
+   {
+   	"mcpServers": {
+   		"oxygen": { "command": "node", "args": ["/path/to/oxygen-mcp/server.cjs"] }
+   	}
+   }
+   ```
+
+### From a clone of the repository
+
+To run the server as it is on `main`, or while working on it, build it from a clone (see [building](building.md)):
 
 ```sh
 pnpm install
 pnpm --filter @oxygen/mcp build
-npx playwright install chromium   # the preview renders in headless Chromium
+npx playwright install chromium
 ```
 
-Then add the server to your agent. It talks over stdio:
-
-```sh
-claude mcp add oxygen -- node /path/to/oxygen/apps/mcp/dist/server.cjs
-```
-
-Other agents take the same command in their MCP settings:
-
-```json
-{
-	"mcpServers": {
-		"oxygen": { "command": "node", "args": ["/path/to/oxygen/apps/mcp/dist/server.cjs"] }
-	}
-}
-```
+and point your agent at `apps/mcp/dist/server.cjs` instead. `pnpm package:mcp` makes the same zip the releases
+carry, in `apps/mcp/release/`.
 
 Relative file paths are relative to the folder the agent starts the server in, usually your project.
 

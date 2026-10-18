@@ -6,6 +6,7 @@
 	import { componentPath } from '../../lib/molang-text';
 	import { closeEffect, copyShareLink, save } from '../../lib/actions';
 	import { runCommand } from '../../lib/commands';
+	import { MCP_PROMPT } from '../../lib/about';
 
 	interface Props {
 		workspace: Workspace;
@@ -54,6 +55,12 @@
 		list.push({ label: 'Settings: viewport and camera', group: 'Oxygen', run: () => workspace.openSettings('viewport') });
 		list.push({ label: 'About Oxygen', group: 'Help', keys: k('app.about'), run: () => workspace.openAbout('about') });
 		list.push({ label: "What's new", group: 'Help', run: () => workspace.openAbout('new') });
+		list.push({ label: 'Set up a coding agent (MCP)', group: 'Help', run: () => workspace.openAbout('agents') });
+		list.push({
+			label: 'Copy the MCP setup prompt',
+			group: 'Help',
+			run: () => void navigator.clipboard.writeText(MCP_PROMPT).then(() => workspace.say('Copied the prompt that sets up Oxygen’s MCP server. Paste it into your coding agent.')),
+		});
 		list.push({ label: 'System information', group: 'Help', run: () => workspace.openAbout('system') });
 		list.push({ label: 'Keyboard shortcuts', group: 'Help', keys: k('app.shortcuts'), run: () => void (workspace.shortcutsOpen = true) });
 		if (s) {
