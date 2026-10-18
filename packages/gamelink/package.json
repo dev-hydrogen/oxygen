@@ -1,6 +1,6 @@
 {
 	"name": "@oxygen/gamelink",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"private": true,
 	"type": "module",
 	"description": "Link Oxygen to Minecraft Bedrock: deploy packs to the development folders, /connect commands, content log import (Node only)",

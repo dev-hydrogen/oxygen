@@ -5,8 +5,8 @@ where they differ, it says so.
 
 ## The window
 
-- **Top bar:** the menus, the command palette (Ctrl+K: every action, panel and layout by name) and Save. In the
-  desktop app it's also the window's title bar.
+- **Top bar:** the menus, the command palette (Ctrl+K: every action, panel and layout by name), Settings (the
+  gear) and Save. In the desktop app it's also the window's title bar. The Oxygen logo opens *About Oxygen*.
 - **Tabs:** every open effect has a tab. In VS Code, each effect opens in its own editor instead.
 - **Panels:** the viewport, the Inspector and the tool tabs (Expression, Problems, Context, Curves, Events,
   Texture and more). Drag a panel's tab to move it, double-click it to fill the window, and bring back closed
@@ -53,9 +53,12 @@ Appearance and Logic.
 | Frame the particles | F |
 | Orbit | Drag |
 | Pan | Middle-drag or Shift+drag |
-| Look around and fly | Right-drag, with W A S D (Q down, E up) |
+| Look around and fly | Right-drag, with W A S D (Q down, E up, Shift faster) |
 | Zoom | Mouse wheel |
 | Inspect a particle | Click it |
+
+These are the default keys; *Settings › Keyboard* changes them (see below). Settings › Viewport sets the field
+of view, how fast the camera turns, zooms and flies, inverted up and down, the resolution and the background.
 
 The toolbar picks how the effect is started (/particle, Script API or Entity), since the game treats them
 differently, and whether it repeats. *Classic*, *Vibrant* or *Split* picks the lighting. *Show* turns helpers
@@ -140,3 +143,25 @@ The desktop app can put your pack into Minecraft and start the effect in your wo
    it and starts the effect. *Spawn again* replays it.
 
 The Problems panel also shows what the game's content log said about the file.
+
+## Settings and keys
+
+*File › Settings…* (Ctrl+, or the gear in the top bar) has everything in one place, with a search box that looks
+through every section and every key:
+
+- **General:** asking before closing unsaved effects, the Inspector's layout, the code text size, how long status
+  messages stay, and in the desktop app the zoom of the whole window.
+- **Preview:** how a newly opened effect starts (spawned by /particle, a script or an entity, repeating or not,
+  its speed and time of day), and Classic or Vibrant Visuals rendering. An effect whose scene is saved in its
+  file keeps its own.
+- **Viewport:** the camera, the resolution, the background, the frame rate readout and the helpers.
+- **Keyboard:** every command, including each panel and layout, with its keys. Click a key to change it, *+* to
+  add another, *×* to remove one. Oxygen warns when a key would also run something else, or when the browser
+  keeps it for itself (Ctrl+W, Ctrl+T, Ctrl+N). The fly keys can be rebound too (Z Q S D on an AZERTY keyboard,
+  say), and so can the Molang editors' rename, go to definition, uses, comment and format.
+- **Settings data:** export your settings to a file and import them in another Oxygen, or reset them.
+
+Keys without Ctrl or Alt (Space, R, F) wait while you type in a field. Settings are kept by each app: in the
+browser for the web app, in VS Code's storage for the extension (shared by its editors), and in a settings file
+for the desktop app. *Help › About Oxygen* shows the version, what's new, what the engine is built from, and the
+system details to paste into a bug report.

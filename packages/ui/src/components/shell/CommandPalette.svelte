@@ -5,6 +5,7 @@
 	import { LAYOUTS, type Workspace } from '../../state/workspace.svelte';
 	import { componentPath } from '../../lib/molang-text';
 	import { closeEffect, copyShareLink, save } from '../../lib/actions';
+	import { runCommand } from '../../lib/commands';
 
 	interface Props {
 		workspace: Workspace;
@@ -25,49 +26,67 @@
 
 	const commands = $derived.by((): Command[] => {
 		const s = workspace.active;
+		const km = workspace.keymap;
+		const k = (id: string) => km.label(id);
 		const list: Command[] = [
-			{ label: 'New effect', group: 'File', keys: 'Ctrl+Alt+N', run: () => void workspace.newEffect() },
-			{ label: 'Save', group: 'File', keys: 'Ctrl+S', run: () => save(workspace) },
+			{ label: 'New effect', group: 'File', keys: k('file.new'), run: () => void workspace.newEffect() },
+			{ label: 'Save', group: 'File', keys: k('file.save'), run: () => save(workspace) },
 		];
-		if (workspace.host.saveAs) list.push({ label: 'Save as…', group: 'File', keys: 'Ctrl+Shift+S', run: () => save(workspace, true) });
-		if (workspace.host.download) list.push({ label: 'Download a copy', group: 'File', run: () => workspace.download() });
-		if (workspace.sessions.length && workspace.host.kind !== 'vscode') list.push({ label: 'Close effect', group: 'File', run: () => closeEffect(workspace) });
-		if (workspace.host.openFiles) list.push({ label: 'Open files…', group: 'File', keys: 'Ctrl+O', run: () => workspace.openFiles() });
-		if (workspace.host.openPack) list.push({ label: 'Open resource pack folder…', group: 'File', run: () => workspace.openPack() });
+		if (workspace.host.saveAs) list.push({ label: 'Save as…', group: 'File', keys: k('file.saveAs'), run: () => save(workspace, true) });
+		if (workspace.host.download) list.push({ label: 'Download a copy', group: 'File', keys: workspace.host.saveAs ? undefined : k('file.saveAs'), run: () => workspace.download() });
+		if (workspace.sessions.length && workspace.host.kind !== 'vscode') list.push({ label: 'Close effect', group: 'File', keys: k('file.close'), run: () => closeEffect(workspace) });
+		if (workspace.sessions.length > 1) {
+			list.push({ label: 'Next open effect', group: 'File', keys: k('file.nextEffect'), run: () => void runCommand(workspace, 'file.nextEffect') });
+			list.push({ label: 'Previous open effect', group: 'File', keys: k('file.previousEffect'), run: () => void runCommand(workspace, 'file.previousEffect') });
+		}
+		if (workspace.host.openFiles) list.push({ label: 'Open files…', group: 'File', keys: k('file.open'), run: () => workspace.openFiles() });
+		if (workspace.host.openPack) list.push({ label: 'Open resource pack folder…', group: 'File', keys: k('file.openPack'), run: () => workspace.openPack() });
 		for (const [id, p] of Object.entries(panels)) {
 			const shown = workspace.openPanels.includes(id);
-			list.push({ label: `${shown ? 'Hide' : 'Show'} ${p.title}`, group: 'View', run: () => (shown ? workspace.hide(id) : workspace.show(id)) });
+			list.push({ label: `${shown ? 'Hide' : 'Show'} ${p.title}`, group: 'View', keys: k(`view.panel.${id}`), run: () => (shown ? workspace.hide(id) : workspace.show(id)) });
 		}
-		for (const l of LAYOUTS) list.push({ label: `Layout: ${l.label}`, group: 'View', run: () => void (workspace.layoutRequest = { name: l.id, at: Date.now() }) });
-		list.push({ label: 'Inspector: categories', group: 'View', run: () => void (workspace.inspectorView = 'categories') });
-		list.push({ label: 'Inspector: phases', group: 'View', run: () => void (workspace.inspectorView = 'phases') });
-		list.push({ label: 'Keyboard shortcuts', group: 'Help', keys: '?', run: () => void (workspace.shortcutsOpen = true) });
+		for (const l of LAYOUTS) list.push({ label: `Layout: ${l.label}`, group: 'View', keys: k(`view.layout.${l.id}`), run: () => void (workspace.layoutRequest = { name: l.id, at: Date.now() }) });
+		list.push({ label: 'Inspector: categories', group: 'View', keys: k('view.inspector.categories'), run: () => void (workspace.inspectorView = 'categories') });
+		list.push({ label: 'Inspector: phases', group: 'View', keys: k('view.inspector.phases'), run: () => void (workspace.inspectorView = 'phases') });
+		list.push({ label: 'Settings', group: 'Oxygen', keys: k('app.settings'), run: () => workspace.openSettings() });
+		list.push({ label: 'Settings: keyboard shortcuts', group: 'Oxygen', run: () => workspace.openSettings('keyboard') });
+		list.push({ label: 'Settings: preview', group: 'Oxygen', run: () => workspace.openSettings('preview') });
+		list.push({ label: 'Settings: viewport and camera', group: 'Oxygen', run: () => workspace.openSettings('viewport') });
+		list.push({ label: 'About Oxygen', group: 'Help', keys: k('app.about'), run: () => workspace.openAbout('about') });
+		list.push({ label: "What's new", group: 'Help', run: () => workspace.openAbout('new') });
+		list.push({ label: 'System information', group: 'Help', run: () => workspace.openAbout('system') });
+		list.push({ label: 'Keyboard shortcuts', group: 'Help', keys: k('app.shortcuts'), run: () => void (workspace.shortcutsOpen = true) });
 		if (s) {
-			list.push({ label: s.playing ? 'Pause' : s.finished ? 'Replay' : 'Play', group: 'Preview', keys: 'Space', run: () => s.togglePlay() });
-			list.push({ label: 'Restart preview', group: 'Preview', keys: 'R', run: () => s.restart() });
-			list.push({ label: s.loopPreview ? 'Stop repeating the effect' : 'Repeat the effect', group: 'Preview', run: () => void (s.loopPreview = !s.loopPreview) });
-			list.push({ label: s.showFacing ? 'Hide facing axes' : 'Show facing axes', group: 'Preview', run: () => void (s.showFacing = !s.showFacing) });
-			list.push({ label: s.showPaths ? 'Hide trajectory paths' : 'Show trajectory paths', group: 'Preview', run: () => void (s.showPaths = !s.showPaths) });
-			list.push({ label: s.showVelocity ? 'Hide velocity arrows' : 'Show velocity arrows', group: 'Preview', run: () => void (s.showVelocity = !s.showVelocity) });
-			list.push({ label: s.showShape ? 'Hide emitter shape' : 'Show emitter shape', group: 'Preview', run: () => void (s.showShape = !s.showShape) });
-			list.push({ label: 'Frame the particles', group: 'Preview', keys: 'F', run: () => void (workspace.frameRequest = Date.now()) });
+			list.push({ label: s.playing ? 'Pause' : s.finished ? 'Replay' : 'Play', group: 'Preview', keys: k('preview.play'), run: () => s.togglePlay() });
+			if (!s.playing) list.push({ label: 'Step one frame', group: 'Preview', keys: k('preview.step'), run: () => s.stepFrame() });
+			list.push({ label: 'Restart preview', group: 'Preview', keys: k('preview.restart'), run: () => s.restart() });
+			list.push({ label: s.loopPreview ? 'Stop repeating the effect' : 'Repeat the effect', group: 'Preview', keys: k('preview.repeat'), run: () => void (s.loopPreview = !s.loopPreview) });
+			list.push({ label: 'Slower playback', group: 'Preview', keys: k('preview.slower'), run: () => void runCommand(workspace, 'preview.slower') });
+			list.push({ label: 'Faster playback', group: 'Preview', keys: k('preview.faster'), run: () => void runCommand(workspace, 'preview.faster') });
+			list.push({ label: s.showFacing ? 'Hide facing axes' : 'Show facing axes', group: 'Preview', keys: k('preview.facing'), run: () => void (s.showFacing = !s.showFacing) });
+			list.push({ label: s.showPaths ? 'Hide trajectory paths' : 'Show trajectory paths', group: 'Preview', keys: k('preview.paths'), run: () => void (s.showPaths = !s.showPaths) });
+			list.push({ label: s.showVelocity ? 'Hide velocity arrows' : 'Show velocity arrows', group: 'Preview', keys: k('preview.velocity'), run: () => void (s.showVelocity = !s.showVelocity) });
+			list.push({ label: s.showShape ? 'Hide emitter shape' : 'Show emitter shape', group: 'Preview', keys: k('preview.shape'), run: () => void (s.showShape = !s.showShape) });
+			list.push({ label: 'Frame the particles', group: 'Preview', keys: k('preview.frame'), run: () => void (workspace.frameRequest = Date.now()) });
 			list.push({
 				label: 'Find uses of a variable…',
 				group: 'Edit',
+				keys: k('edit.findVariable'),
 				run: () => {
 					s.programFilter = 'v.';
 					s.referencesRequest = { name: 'v.', at: Date.now() };
 				},
 			});
-			for (const m of SPAWN_MODES) list.push({ label: `Spawn as ${m.label}`, group: 'Preview', run: () => s.setSpawnMode(m.id) });
+			for (const m of SPAWN_MODES) list.push({ label: `Spawn as ${m.label}`, group: 'Preview', keys: k(`preview.spawn.${m.id}`), run: () => s.setSpawnMode(m.id) });
 			if (workspace.host.kind === 'web')
 				list.push({
 					label: 'Copy share link',
 					group: 'File',
+					keys: k('file.share'),
 					run: () => copyShareLink(workspace),
 				});
-			list.push({ label: 'Undo', group: 'Edit', keys: 'Ctrl+Z', run: () => workspace.undo(s) });
-			list.push({ label: 'Redo', group: 'Edit', keys: 'Ctrl+Y', run: () => workspace.redo(s) });
+			list.push({ label: 'Undo', group: 'Edit', keys: k('edit.undo'), run: () => workspace.undo(s) });
+			list.push({ label: 'Redo', group: 'Edit', keys: k('edit.redo'), run: () => workspace.redo(s) });
 			const present = Object.keys((s.doc.get('particle_effect/components') as object) ?? {});
 			const groups = new Set(COMPONENTS.filter((c) => present.includes(c.id) && c.group).map((c) => c.group));
 			for (const c of COMPONENTS) {

@@ -4,7 +4,9 @@ import { parse as parseJsonc, type ParseError } from 'jsonc-parser';
 import { parseGrading, parseLighting, parseTextureSet } from '@oxygen/scene';
 import type { FileRef, Host, OpenedFile } from '../host';
 import { EffectSession } from './session.svelte';
-import { DEFAULT_GIZMOS, type Gizmos } from '../viewport/gizmos';
+import type { Gizmos } from '../viewport/gizmos';
+import { KEY_COMMANDS, Keymap, viewCommands } from '../lib/keys';
+import { DEFAULT_PREFERENCES, readPreferences, type InspectorView, type Preferences, type RenderMode } from './preferences';
 
 export type LayoutName = 'editor' | 'preview' | 'code' | 'events' | 'curves' | 'look' | 'debug';
 export const LAYOUTS: { id: LayoutName; label: string; help: string }[] = [
@@ -17,22 +19,33 @@ export const LAYOUTS: { id: LayoutName; label: string; help: string }[] = [
 	{ id: 'debug', label: 'Debugging', help: 'Viewport, Debug and the whole effect in evaluation order' },
 ];
 
-export type InspectorView = 'categories' | 'phases';
+export type { InspectorView } from './preferences';
+
+/** Sections of the Settings and About dialogs */
+export type SettingsSection = 'general' | 'preview' | 'viewport' | 'keyboard' | 'data';
+export type AboutSection = 'about' | 'new' | 'engine' | 'system' | 'credits';
 
 /** Open documents, the active one, and app-wide preferences */
 export class Workspace {
 	sessions = $state<EffectSession[]>([]);
 	activeId = $state<string | null>(null);
-	inspectorView = $state<InspectorView>('categories');
-	/** viewport rendering: the classic renderer, the Vibrant Visuals approximation, or both side by side */
-	renderMode = $state<'classic' | 'vv' | 'split'>('classic');
-	/** viewport helpers shown (the ground, the scale block, emitter markers, the kill plane, the entity) */
-	gizmos = $state<Gizmos>({ ...DEFAULT_GIZMOS });
-	/** Vibrant Visuals shows the game's sky behind particles; off keeps the classic backdrop to compare just the particles */
-	vvSky = $state(true);
+	/** what the Settings dialog sets (the host keeps it); the defaults until the host's copy arrives */
+	prefs = $state<Preferences>(structuredClone(DEFAULT_PREFERENCES));
+	/** the host's preferences are in (saving starts then, so the defaults never overwrite them) */
+	prefsLoaded = $state(false);
+	/** panel titles by id, from the shell: each gets a command keys can be bound to */
+	panelTitles = $state<Record<string, { title: string }>>({});
+	/** the keys in effect: the defaults with the user's bindings over them */
+	keymap = $derived(new Keymap([...KEY_COMMANDS, ...viewCommands(this.panelTitles, LAYOUTS)], this.prefs.keys));
 	paletteOpen = $state(false);
 	/** the keyboard shortcuts sheet */
 	shortcutsOpen = $state(false);
+	settingsOpen = $state(false);
+	settingsSection = $state<SettingsSection>('general');
+	aboutOpen = $state(false);
+	aboutSection = $state<AboutSection>('about');
+	/** a key binding is being recorded: keys go to the recorder, not to commands */
+	recordingKeys = $state(false);
 	/** bumped to ask the viewport to frame the particles */
 	frameRequest = $state(0);
 	/** Panel the UI asks the shell to reveal (outliner → curves, problems → inspector) */
@@ -53,7 +66,110 @@ export class Workspace {
 	/** Effect JSON fetched from the host by identifier (null = not found) */
 	private effectCache = new Map<string, unknown | null>();
 
-	constructor(readonly host: Host) {}
+	/** everything the host stores for the UI (layout, preferences), so writers never undo each other's changes */
+	private settings: Promise<Record<string, unknown>>;
+	private saveTimer: ReturnType<typeof setTimeout> | null = null;
+	/** the preferences as last saved or taken from the host, so an unchanged copy isn't saved again */
+	private savedPrefs = '';
+
+	constructor(readonly host: Host) {
+		this.settings = host.loadSettings().catch(() => ({}));
+		void this.settings.then((s) => this.applySettings(s));
+	}
+
+	get inspectorView(): InspectorView {
+		return this.prefs.inspectorView;
+	}
+	set inspectorView(v: InspectorView) {
+		this.prefs.inspectorView = v;
+	}
+	/** viewport rendering: the classic renderer, the Vibrant Visuals approximation, or both side by side */
+	get renderMode(): RenderMode {
+		return this.prefs.renderMode;
+	}
+	set renderMode(v: RenderMode) {
+		this.prefs.renderMode = v;
+	}
+	/** viewport helpers shown (the ground, the scale block, emitter markers, the kill plane, the entity) */
+	get gizmos(): Gizmos {
+		return this.prefs.gizmos;
+	}
+	set gizmos(v: Gizmos) {
+		this.prefs.gizmos = v;
+	}
+	/** Vibrant Visuals shows the game's sky behind particles; off keeps the classic backdrop to compare just the particles */
+	get vvSky(): boolean {
+		return this.prefs.vvSky;
+	}
+	set vvSky(v: boolean) {
+		this.prefs.vvSky = v;
+	}
+
+	/** Settings from the host (at the start, and when another Oxygen editor changed them) */
+	applySettings(s: Record<string, unknown>): void {
+		this.settings = Promise.resolve(s);
+		const prefs = readPreferences(s.preferences, s);
+		this.savedPrefs = JSON.stringify(prefs);
+		this.prefs = prefs;
+		this.prefsLoaded = true;
+	}
+
+	/** The host's stored settings (layout, preferences) */
+	loadSettings(): Promise<Record<string, unknown>> {
+		return this.settings;
+	}
+
+	/** Change some of the stored settings and keep the rest (`undefined` removes one) */
+	updateSettings(patch: Record<string, unknown>): void {
+		this.settings = this.settings.then((s) => {
+			const next = { ...s, ...patch };
+			for (const [k, v] of Object.entries(patch)) if (v === undefined) delete next[k];
+			this.host.saveSettings(next);
+			return next;
+		});
+	}
+
+	/** Keep the preferences, a moment after the last change (sliders change them many times a second) */
+	savePreferences(): void {
+		if (!this.prefsLoaded) return;
+		if (this.saveTimer) clearTimeout(this.saveTimer);
+		this.saveTimer = setTimeout(() => {
+			this.saveTimer = null;
+			const prefs = $state.snapshot(this.prefs);
+			const json = JSON.stringify(prefs);
+			if (json === this.savedPrefs) return;
+			this.savedPrefs = json;
+			// the viewport's helpers were kept on their own before there were preferences
+			this.updateSettings({ preferences: prefs, gizmos: undefined });
+		}, 250);
+	}
+
+	/** Every preference back to its default (the layout stays) */
+	resetPreferences(): void {
+		this.prefs = structuredClone(DEFAULT_PREFERENCES);
+	}
+
+	openSettings(section?: SettingsSection): void {
+		if (section) this.settingsSection = section;
+		this.settingsOpen = true;
+		this.aboutOpen = false;
+		this.shortcutsOpen = false;
+		this.paletteOpen = false;
+	}
+
+	openAbout(section?: AboutSection): void {
+		if (section) this.aboutSection = section;
+		this.aboutOpen = true;
+		this.settingsOpen = false;
+		this.shortcutsOpen = false;
+		this.paletteOpen = false;
+	}
+
+	/** How a new effect's preview starts */
+	private previewDefaults() {
+		const p = this.prefs;
+		return { spawnMode: p.spawnMode, repeat: p.repeat, speed: p.speed, timeOfDay: p.timeOfDay };
+	}
 
 	/** JSON of an effect by identifier: open documents first, then whatever the host already found */
 	findEffectJson(id: string): unknown | null {
@@ -91,7 +207,7 @@ export class Workspace {
 			this.activeId = existing.id;
 			return existing;
 		}
-		const s = new EffectSession(file.text, file.file, { findChild: (id) => this.findEffectJson(id) });
+		const s = new EffectSession(file.text, file.file, { findChild: (id) => this.findEffectJson(id), defaults: this.previewDefaults() });
 		if (this.host.onDocumentChange) {
 			s.doc.onChange((c) => {
 				if (c.origin !== 'external') this.host.onDocumentChange!(s.file, { edits: c.edits, label: c.label }, s.doc.text);

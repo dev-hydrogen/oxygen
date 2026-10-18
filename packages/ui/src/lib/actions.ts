@@ -24,7 +24,7 @@ export async function copyShareLink(workspace: Workspace): Promise<void> {
 export function closeEffect(workspace: Workspace, id = workspace.activeId): void {
 	const s = workspace.sessions.find((x) => x.id === id);
 	if (!s) return;
-	if (s.dirty && !confirm(`${s.file.name} has unsaved changes. Close it anyway?`)) return;
+	if (s.dirty && workspace.prefs.confirmClose && !confirm(`${s.file.name} has unsaved changes. Close it anyway?`)) return;
 	workspace.close(s.id);
 }
 

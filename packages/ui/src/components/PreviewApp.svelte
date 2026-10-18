@@ -1,15 +1,20 @@
 <script lang="ts">
 	import type { Workspace } from '../state/workspace.svelte';
 	import Viewport from './panels/Viewport.svelte';
+	import { handleKey } from '../lib/keyboard';
 
 	interface Props {
 		workspace: Workspace;
 	}
 
 	let { workspace }: Props = $props();
+	// the preview's own keys (play, restart, frame…); the rest belong to the editor beside it
+	const onKey = (e: KeyboardEvent) => handleKey(workspace, e, (id) => id.startsWith('preview.'));
 	const s = $derived(workspace.active);
 	const errors = $derived(s ? s.problems.filter((p) => p.severity === 'error') : []);
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <!-- Preview only: the viewport for a file edited elsewhere (VS Code text editor) -->
 <div class="ox-root preview">

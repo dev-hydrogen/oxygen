@@ -7,6 +7,14 @@ import type { ToExtension, ToWebview } from './protocol';
  * webview starts on the document without asking for it; the skeleton paints in the editor's colors at once,
  * so opening a file never flashes an empty panel.
  */
+/** What About › System says about VS Code and the extension */
+export function aboutVsCode(context: vscode.ExtensionContext): { label: string; value: string }[] {
+	return [
+		{ label: 'VS Code', value: `${vscode.version} (${vscode.env.appName}, ${vscode.env.uiKind === vscode.UIKind.Web ? 'web' : 'desktop'})` },
+		{ label: 'Extension', value: `${context.extension.id} ${(context.extension.packageJSON as { version?: string }).version ?? ''}` },
+	];
+}
+
 export function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri, init?: ToWebview): string {
 	const dist = vscode.Uri.joinPath(extensionUri, 'dist', 'webview');
 	const script = webview.asWebviewUri(vscode.Uri.joinPath(dist, 'index.js'));

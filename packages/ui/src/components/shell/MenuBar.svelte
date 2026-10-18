@@ -4,6 +4,7 @@
 	import { SPAWN_MODES } from '../../state/session.svelte';
 	import { LAYOUTS, type Workspace } from '../../state/workspace.svelte';
 	import { closeEffect, copyShareLink, openExample, save } from '../../lib/actions';
+	import { REPO } from '../../lib/about';
 
 	/** File / Edit / View / Preview / Examples / Help, like other editors: every panel can be brought back from View */
 	interface Props {
@@ -33,34 +34,38 @@
 
 	const host = $derived(workspace.host);
 	const inVsCode = $derived(host.kind === 'vscode');
+	/** the key bound to a command, for the menu's right column */
+	const k = (id: string) => workspace.keymap.label(id);
 
 	function fileItems(): Item[] {
 		const s = workspace.active;
 		const items: Item[] = [];
-		if (!inVsCode) items.push({ label: 'New effect', keys: 'Ctrl+Alt+N', run: () => void workspace.newEffect() });
-		if (host.openFiles) items.push({ label: 'Open files…', keys: 'Ctrl+O', run: () => workspace.openFiles() });
-		if (host.openPack) items.push({ label: 'Open resource pack folder…', run: () => workspace.openPack() });
+		if (!inVsCode) items.push({ label: 'New effect', keys: k('file.new'), run: () => void workspace.newEffect() });
+		if (host.openFiles) items.push({ label: 'Open files…', keys: k('file.open'), run: () => workspace.openFiles() });
+		if (host.openPack) items.push({ label: 'Open resource pack folder…', keys: k('file.openPack'), run: () => workspace.openPack() });
 		if (host.recentFiles && recent.length) {
 			items.push({ separator: true }, { heading: 'Recent' });
 			for (const f of recent.slice(0, 6)) items.push({ label: f.name, title: f.where ?? f.id ?? '', run: () => workspace.openKnown(f) });
 		}
 		items.push({ separator: true });
-		items.push({ label: 'Save', keys: 'Ctrl+S', disabled: !s, run: () => save(workspace) });
-		if (host.saveAs) items.push({ label: 'Save as…', keys: 'Ctrl+Shift+S', disabled: !s, run: () => save(workspace, true) });
-		if (host.download) items.push({ label: 'Download a copy', keys: host.saveAs ? undefined : 'Ctrl+Shift+S', disabled: !s, run: () => workspace.download() });
-		if (host.kind === 'web') items.push({ label: 'Copy share link', disabled: !s, run: () => copyShareLink(workspace) });
-		if (!inVsCode) items.push({ separator: true }, { label: 'Close effect', disabled: !s, run: () => closeEffect(workspace) });
+		items.push({ label: 'Save', keys: k('file.save'), disabled: !s, run: () => save(workspace) });
+		if (host.saveAs) items.push({ label: 'Save as…', keys: k('file.saveAs'), disabled: !s, run: () => save(workspace, true) });
+		if (host.download) items.push({ label: 'Download a copy', keys: host.saveAs ? undefined : k('file.saveAs'), disabled: !s, run: () => workspace.download() });
+		if (host.kind === 'web') items.push({ label: 'Copy share link', keys: k('file.share'), disabled: !s, run: () => copyShareLink(workspace) });
+		items.push({ separator: true }, { label: 'Settings…', keys: k('app.settings'), run: () => workspace.openSettings() });
+		if (!inVsCode) items.push({ separator: true }, { label: 'Close effect', keys: k('file.close'), disabled: !s, run: () => closeEffect(workspace) });
 		return items;
 	}
 
 	function editItems(): Item[] {
 		const s = workspace.active;
 		return [
-			{ label: 'Undo', keys: 'Ctrl+Z', disabled: !s, run: () => void (s && workspace.undo(s)) },
-			{ label: 'Redo', keys: 'Ctrl+Y', disabled: !s, run: () => void (s && workspace.redo(s)) },
+			{ label: 'Undo', keys: k('edit.undo'), disabled: !s, run: () => void (s && workspace.undo(s)) },
+			{ label: 'Redo', keys: k('edit.redo'), disabled: !s, run: () => void (s && workspace.redo(s)) },
 			{ separator: true },
 			{
 				label: 'Find uses of a variable…',
+				keys: k('edit.findVariable'),
 				disabled: !s,
 				run: () => {
 					if (!s) return;
@@ -69,7 +74,8 @@
 				},
 			},
 			{ separator: true },
-			{ label: 'Commands…', keys: 'Ctrl+K', run: () => void (workspace.paletteOpen = true) },
+			{ label: 'Commands…', keys: k('app.commands'), run: () => void (workspace.paletteOpen = true) },
+			{ label: 'Keyboard shortcuts…', run: () => workspace.openSettings('keyboard') },
 		];
 	}
 
@@ -77,13 +83,13 @@
 		const items: Item[] = [{ heading: 'Panels' }];
 		for (const [id, p] of Object.entries(panels)) {
 			const shown = workspace.openPanels.includes(id);
-			items.push({ label: p.title, checked: shown, run: () => (shown ? workspace.hide(id) : workspace.show(id)) });
+			items.push({ label: p.title, checked: shown, keys: k(`view.panel.${id}`), run: () => (shown ? workspace.hide(id) : workspace.show(id)) });
 		}
 		items.push({ separator: true }, { heading: 'Reset the layout to' });
-		for (const l of LAYOUTS) items.push({ label: l.label, title: l.help, run: () => void (workspace.layoutRequest = { name: l.id, at: Date.now() }) });
+		for (const l of LAYOUTS) items.push({ label: l.label, title: l.help, keys: k(`view.layout.${l.id}`), run: () => void (workspace.layoutRequest = { name: l.id, at: Date.now() }) });
 		items.push({ separator: true }, { heading: 'Inspector' });
-		items.push({ label: 'By category', checked: workspace.inspectorView === 'categories', run: () => void (workspace.inspectorView = 'categories') });
-		items.push({ label: 'By phase', checked: workspace.inspectorView === 'phases', run: () => void (workspace.inspectorView = 'phases') });
+		items.push({ label: 'By category', checked: workspace.inspectorView === 'categories', keys: k('view.inspector.categories'), run: () => void (workspace.inspectorView = 'categories') });
+		items.push({ label: 'By phase', checked: workspace.inspectorView === 'phases', keys: k('view.inspector.phases'), run: () => void (workspace.inspectorView = 'phases') });
 		return items;
 	}
 
@@ -91,27 +97,29 @@
 		const s = workspace.active;
 		if (!s) return [{ heading: 'Open an effect to preview it' }];
 		const items: Item[] = [
-			{ label: s.playing ? 'Pause' : s.finished ? 'Replay' : 'Play', keys: 'Space', run: () => s.togglePlay() },
-			{ label: 'Restart', keys: 'R', run: () => s.restart() },
-			{ label: 'Repeat', checked: s.loopPreview, title: 'Looping effects loop seamlessly; others play again when they end', run: () => void (s.loopPreview = !s.loopPreview) },
-			{ label: 'Frame the particles', keys: 'F', run: () => void (workspace.frameRequest = Date.now()) },
+			{ label: s.playing ? 'Pause' : s.finished ? 'Replay' : 'Play', keys: k('preview.play'), run: () => s.togglePlay() },
+			{ label: 'Step one frame', keys: k('preview.step'), disabled: s.playing, run: () => s.stepFrame() },
+			{ label: 'Restart', keys: k('preview.restart'), run: () => s.restart() },
+			{ label: 'Repeat', checked: s.loopPreview, keys: k('preview.repeat'), title: 'Looping effects loop seamlessly; others play again when they end', run: () => void (s.loopPreview = !s.loopPreview) },
+			{ label: 'Frame the particles', keys: k('preview.frame'), run: () => void (workspace.frameRequest = Date.now()) },
 			{ separator: true },
-			{ label: 'Trajectory paths', checked: s.showPaths, run: () => void (s.showPaths = !s.showPaths) },
-			{ label: 'Facing axes', checked: s.showFacing, run: () => void (s.showFacing = !s.showFacing) },
-			{ label: 'Velocity arrows', checked: s.showVelocity, run: () => void (s.showVelocity = !s.showVelocity) },
-			{ label: 'Emitter shape', checked: s.showShape, run: () => void (s.showShape = !s.showShape) },
+			{ label: 'Trajectory paths', checked: s.showPaths, keys: k('preview.paths'), run: () => void (s.showPaths = !s.showPaths) },
+			{ label: 'Facing axes', checked: s.showFacing, keys: k('preview.facing'), run: () => void (s.showFacing = !s.showFacing) },
+			{ label: 'Velocity arrows', checked: s.showVelocity, keys: k('preview.velocity'), run: () => void (s.showVelocity = !s.showVelocity) },
+			{ label: 'Emitter shape', checked: s.showShape, keys: k('preview.shape'), run: () => void (s.showShape = !s.showShape) },
 			{ separator: true },
 			{ heading: 'Spawned by' },
 		];
-		for (const m of SPAWN_MODES) items.push({ label: m.label, title: m.help, checked: s.spawnMode === m.id, run: () => s.setSpawnMode(m.id) });
+		for (const m of SPAWN_MODES) items.push({ label: m.label, title: m.help, checked: s.spawnMode === m.id, keys: k(`preview.spawn.${m.id}`), run: () => s.setSpawnMode(m.id) });
 		items.push({ separator: true }, { heading: 'Rendering' });
 		const modes = [
 			{ id: 'classic', label: 'Classic' },
 			{ id: 'vv', label: 'Vibrant Visuals' },
 			{ id: 'split', label: 'Classic | Vibrant side by side' },
 		] as const;
-		for (const m of modes) items.push({ label: m.label, checked: workspace.renderMode === m.id, run: () => void (workspace.renderMode = m.id) });
-		items.push({ label: 'Sky behind Vibrant Visuals', checked: workspace.vvSky, title: 'Off keeps the classic background, so only the particles differ', run: () => void (workspace.vvSky = !workspace.vvSky) });
+		for (const m of modes) items.push({ label: m.label, checked: workspace.renderMode === m.id, keys: k(`preview.render.${m.id}`), run: () => void (workspace.renderMode = m.id) });
+		items.push({ label: 'Sky behind Vibrant Visuals', checked: workspace.vvSky, keys: k('preview.vvSky'), title: 'Off keeps the classic background, so only the particles differ', run: () => void (workspace.vvSky = !workspace.vvSky) });
+		items.push({ separator: true }, { label: 'Preview and viewport settings…', run: () => workspace.openSettings('preview') });
 		return items;
 	}
 
@@ -122,11 +130,19 @@
 
 	function helpItems(): Item[] {
 		return [
-			{ label: 'Keyboard shortcuts', keys: '?', run: () => void (workspace.shortcutsOpen = true) },
-			{ label: 'All commands', keys: 'Ctrl+K', run: () => void (workspace.paletteOpen = true) },
+			{ label: 'Keyboard shortcuts', keys: k('app.shortcuts'), run: () => void (workspace.shortcutsOpen = true) },
+			{ label: 'All commands', keys: k('app.commands'), run: () => void (workspace.paletteOpen = true) },
 			{ separator: true },
+			{ label: 'Oxygen guide', href: `${REPO}/blob/main/docs/guide.md` },
+			{ label: 'How faithful the preview is', href: `${REPO}/blob/main/docs/accuracy.md` },
 			{ label: 'Bedrock particle documentation', href: 'https://learn.microsoft.com/minecraft/creator/documents/particleeffects' },
 			{ label: 'Molang reference', href: 'https://learn.microsoft.com/minecraft/creator/reference/content/molangreference/' },
+			{ separator: true },
+			{ label: "What's new", run: () => workspace.openAbout('new') },
+			{ label: 'Report a problem', href: `${REPO}/issues/new` },
+			{ label: 'System information', run: () => workspace.openAbout('system') },
+			{ separator: true },
+			{ label: 'About Oxygen', keys: k('app.about'), run: () => workspace.openAbout('about') },
 		];
 	}
 

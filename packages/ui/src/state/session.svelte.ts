@@ -224,8 +224,22 @@ export class EffectSession {
 	private findChild: (id: string) => unknown | null;
 	private childDefs = new Map<string, EffectDefinition | null>();
 
-	constructor(text: string, file: FileRef, options: { engine?: string | readonly number[] | null; findChild?: (id: string) => unknown | null } = {}) {
+	constructor(
+		text: string,
+		file: FileRef,
+		options: {
+			engine?: string | readonly number[] | null;
+			findChild?: (id: string) => unknown | null;
+			/** how the preview starts (Settings › Preview); a scene saved in the file wins */
+			defaults?: { spawnMode?: SpawnMode; repeat?: boolean; speed?: number; timeOfDay?: number };
+		} = {},
+	) {
 		this.findChild = options.findChild ?? (() => null);
+		const d = options.defaults ?? {};
+		if (d.spawnMode) this.spawnMode = d.spawnMode;
+		if (d.repeat !== undefined) this._loopPreview = d.repeat;
+		if (d.speed !== undefined) this.speed = d.speed;
+		if (d.timeOfDay !== undefined) this.timeOfDay = d.timeOfDay;
 		this.file = file;
 		this.doc = new JsonDocument(text);
 		this.savedText = text;

@@ -35,6 +35,7 @@ async function request<T>(kind: 'texture' | 'effect' | 'text' | 'openEffect' | '
 }
 
 let settings: Record<string, unknown> = {};
+let about: { label: string; value: string }[] = [];
 
 const host: Host = {
 	kind: 'vscode',
@@ -67,6 +68,8 @@ const host: Host = {
 		settings = s;
 		post({ type: 'settings', settings: s });
 	},
+	settingsLocation: 'In VS Code’s storage for the extension, on this machine. Each open Oxygen editor reads them when it opens.',
+	about: async () => about,
 	onDocumentChange(_file: FileRef, change) {
 		post({ type: 'edit', edits: change.edits, label: change.label });
 	},
@@ -79,6 +82,7 @@ let app: ReturnType<typeof mountOxygen> | null = null;
 function start(m: Extract<ToWebview, { type: 'init' }>) {
 	if (app) return;
 	settings = m.settings ?? {};
+	about = m.about ?? [];
 	document.body.classList.toggle('ox-follow-vscode', m.theme !== 'oxygen');
 	app = mountOxygen(document.getElementById('app')!, host, { mode: m.mode });
 	(window as unknown as { oxygen: unknown }).oxygen = app.workspace;
@@ -109,6 +113,11 @@ window.addEventListener('message', (e: MessageEvent<ToWebview>) => {
 		case 'reply': {
 			pending.get(m.id)?.(m.value);
 			pending.delete(m.id);
+			break;
+		}
+		case 'settings': {
+			settings = m.settings;
+			app?.workspace.applySettings(m.settings);
 			break;
 		}
 		case 'visibility': {

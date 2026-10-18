@@ -1,6 +1,6 @@
 {
 	"name": "@oxygen/desktop",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"private": true,
 	"description": "Oxygen desktop app (Electron): native files, pack folders, file watching, game link",
 	"author": "Hydrogen (https://github.com/dev-hydrogen)",

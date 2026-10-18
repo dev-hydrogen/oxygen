@@ -19,17 +19,20 @@
 <header class="top" class:integrated={workspace.host.kind === 'desktop'}>
 	<!-- the menu row, then the open effects on a row of their own -->
 	<div class="menurow">
-		<div class="brand">
+		<button class="brand" title="About Oxygen" onclick={() => workspace.openAbout()}>
 			<!-- rendered by tools/logo.mjs; the light one shows in VS Code's light themes -->
 			<img class="logo dark" src={logoDark} alt="Oxygen" />
 			<img class="logo light" src={logoLight} alt="Oxygen" />
-		</div>
+		</button>
 		<MenuBar {workspace} {panels} />
 		<span class="spacer"></span>
 		<div class="actions">
-			<button class="btn ghost" title="Commands (Ctrl+K)" onclick={() => (workspace.paletteOpen = true)}>Commands <kbd>Ctrl K</kbd></button>
+			<button class="btn ghost" title={workspace.keymap.title('Commands', 'app.commands')} onclick={() => (workspace.paletteOpen = true)}>Commands{#if workspace.keymap.label('app.commands')}<kbd>{workspace.keymap.label('app.commands')}</kbd>{/if}</button>
+			<button class="btn ghost icon" aria-label="Settings" title={workspace.keymap.title('Settings', 'app.settings')} onclick={() => workspace.openSettings()}>
+				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8zm5.3 3.3.1-.9-.1-.9 1.4-1.1-1.4-2.4-1.7.6a5 5 0 0 0-1.5-.9L9.8 1.5H6.2l-.3 1.8a5 5 0 0 0-1.5.9l-1.7-.6-1.4 2.4 1.4 1.1-.1.9.1.9-1.4 1.1 1.4 2.4 1.7-.6c.5.4 1 .7 1.5.9l.3 1.8h3.6l.3-1.8c.5-.2 1-.5 1.5-.9l1.7.6 1.4-2.4z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" /></svg>
+			</button>
 			{#if workspace.host.game}<GameMenu {workspace} game={workspace.host.game} />{/if}
-			<button class="btn primary" title="Save (Ctrl+S)" disabled={!workspace.active} onclick={() => save(workspace)}>Save</button>
+			<button class="btn primary" title={workspace.keymap.title('Save', 'file.save')} disabled={!workspace.active} onclick={() => save(workspace)}>Save</button>
 		</div>
 	</div>
 
@@ -45,7 +48,7 @@
 				</button>
 			</div>
 		{/each}
-		<button class="new" aria-label="New effect" title="New effect (Ctrl+Alt+N)" onclick={() => workspace.newEffect()}>
+		<button class="new" aria-label="New effect" title={workspace.keymap.title('New effect', 'file.new')} onclick={() => workspace.newEffect()}>
 			<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1.5v7M1.5 5h7" stroke="currentColor" stroke-width="1.3" /></svg>
 		</button>
 	</div>
@@ -83,7 +86,10 @@
 		align-items: center;
 		height: 100%;
 		margin-left: -4px;
-		padding-right: 2px;
+		padding: 0 2px 0 0;
+		border: none;
+		background: none;
+		cursor: pointer;
 	}
 	.logo {
 		display: block;
@@ -204,6 +210,19 @@
 		font-size: 11px;
 		color: var(--ox-text-dim);
 		margin-left: 4px;
+	}
+	.btn.icon {
+		width: 26px;
+		padding: 0;
+		display: grid;
+		place-items: center;
+	}
+	.btn.icon svg {
+		width: 15px;
+		height: 15px;
+	}
+	.btn.ghost:hover:not(:disabled) {
+		color: var(--ox-frost);
 	}
 	.btn.primary {
 		background: var(--ox-lox);

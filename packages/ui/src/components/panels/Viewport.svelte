@@ -5,7 +5,9 @@
 	import { ViewportScene } from '../../viewport/scene';
 	import { createMersProvider, createTextureProvider } from '../../lib/textures';
 	import { readMeta, writeMeta } from '@oxygen/format';
-	import { DEFAULT_GIZMOS, type GizmoHit, type Gizmos } from '../../viewport/gizmos';
+	import type { GizmoHit, Gizmos } from '../../viewport/gizmos';
+	import { SPEEDS } from '../../state/preferences';
+	import { flyKeys } from '../../lib/keyboard';
 
 	interface Props {
 		workspace: Workspace;
@@ -36,20 +38,19 @@
 		scene?.setSession(session);
 	});
 
-	// which helpers are drawn, kept between visits
-	let gizmosLoaded = false;
-	onMount(() => {
-		void workspace.host.loadSettings().then((s) => {
-			const saved = s.gizmos as Partial<Gizmos> | undefined;
-			if (saved && typeof saved === 'object') workspace.gizmos = { ...DEFAULT_GIZMOS, ...saved };
-			gizmosLoaded = true;
-		});
-	});
+	// which helpers are drawn (kept with the preferences)
 	$effect(() => {
 		const g = { ...workspace.gizmos };
 		if (scene) scene.gizmos = g;
-		if (gizmosLoaded) void workspace.host.loadSettings().then((s) => workspace.host.saveSettings({ ...s, gizmos: g }));
 	});
+
+	// Settings › Viewport, and the keys bound to flying
+	$effect(() => {
+		const p = workspace.prefs;
+		const controls = { fov: p.fov, turnSpeed: p.turnSpeed, invertY: p.invertY, zoomSpeed: p.zoomSpeed, flySpeed: p.flySpeed, fastFactor: p.fastFactor, resolution: p.resolution, background: p.background, flyKeys: flyKeys(workspace.keymap) };
+		scene?.setControls(controls);
+	});
+	const km = $derived(workspace.keymap);
 
 	let showOpen = $state(false);
 	const GIZMOS: { key: keyof Gizmos; label: string; help: string }[] = [
@@ -102,7 +103,7 @@
 		scene?.dispose();
 	});
 
-	const speeds = [0.1, 0.25, 0.5, 1, 2];
+	const speeds = SPEEDS;
 	let viewsOpen = $state(false);
 	const views = $derived.by(() => {
 		void session?.version;
@@ -157,7 +158,7 @@
 
 	{#if session}
 		<div class="bar top">
-			<button class="tool" aria-label={session.playing ? 'Pause' : session.finished ? 'Replay' : 'Play'} title={session.playing ? 'Pause (Space)' : session.finished ? 'Replay from the start (Space)' : 'Play (Space)'} onclick={() => session.togglePlay()}>
+			<button class="tool" aria-label={session.playing ? 'Pause' : session.finished ? 'Replay' : 'Play'} title={km.title(session.playing ? 'Pause' : session.finished ? 'Replay from the start' : 'Play', 'preview.play')} onclick={() => session.togglePlay()}>
 				{#if session.playing}
 					<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.5" height="8" fill="currentColor" /><rect x="7" y="2" width="2.5" height="8" fill="currentColor" /></svg>
 				{:else if session.finished}
@@ -166,10 +167,10 @@
 					<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 2l7 4-7 4z" fill="currentColor" /></svg>
 				{/if}
 			</button>
-			<button class="tool" aria-label="Step one frame" title="Step one frame" disabled={session.playing} onclick={() => session.stepFrame()}>
+			<button class="tool" aria-label="Step one frame" title={km.title('Step one frame', 'preview.step')} disabled={session.playing} onclick={() => session.stepFrame()}>
 				<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2l5 4-5 4z" fill="currentColor" /><rect x="8.5" y="2" width="1.5" height="8" fill="currentColor" /></svg>
 			</button>
-			<button class="tool" aria-label="Restart" title="Restart (R)" onclick={() => session.restart()}>
+			<button class="tool" aria-label="Restart" title={km.title('Restart', 'preview.restart')} onclick={() => session.restart()}>
 				<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M9.5 6a3.5 3.5 0 1 1-1.1-2.55" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M9.8 1.5v2.8H7" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
 			</button>
 			<span class="sep"></span>
@@ -230,11 +231,11 @@
 							<p class="vnone">No saved views yet.</p>
 						{/each}
 						<button class="vitem save" onclick={saveView}>Save this view</button>
-						<p class="vnone">Views are stored in the file's oxygen block. Drag orbits around what's under the cursor; right drag looks around (with W A S D, Q and E to fly).</p>
+						<p class="vnone">Views are stored in the file's oxygen block. Drag orbits around what's under the cursor; right drag looks around (hold {['forward', 'left', 'back', 'right'].map((a) => km.label(`camera.${a}`) ?? '').join(' ')} to fly).</p>
 					</div>
 				{/if}
 			</div>
-			<button class="tool text" title="Frame the particles (F)" onclick={() => scene?.frameAll()}>Frame</button>
+			<button class="tool text" title={km.title('Frame the particles', 'preview.frame')} onclick={() => scene?.frameAll()}>Frame</button>
 		</div>
 		{#if workspace.renderMode === 'split'}
 			<div class="splitline" aria-hidden="true"></div>
@@ -267,7 +268,7 @@
 			<span class:warn={session.stats.capHit} title={session.stats.capHit ? 'An emitter is at the live particle cap: new particles are blocked, like in-game' : 'Live particles / cap per emitter'}>
 				{session.stats.particles.toLocaleString()} <span class="dim">/ {session.stats.cap.toLocaleString()}</span>
 			</span>
-			<span class="dim" data-fps={fps}>{fps} fps</span>
+			{#if workspace.prefs.showFps}<span class="dim" data-fps={fps}>{fps} fps</span>{/if}
 		</div>
 	{:else}
 		<div class="empty">

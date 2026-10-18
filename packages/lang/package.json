@@ -1,6 +1,6 @@
 {
 	"name": "@oxygen/lang",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"private": true,
 	"type": "module",
 	"description": "Molang language service for CodeMirror 6: highlighting, rainbow brackets, completion, hover, signature help, diagnostics, formatting",

@@ -18,7 +18,7 @@ import { existing, text, tool } from './util';
 import { registerDebugTools } from './debug-tools';
 import { registerGameTools } from './game';
 
-const VERSION = '0.1.1';
+const VERSION = '0.2.0';
 
 const browser = new PreviewBrowser();
 

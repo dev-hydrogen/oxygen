@@ -64,6 +64,17 @@ const host: Host = {
 	onOpenFilesChanged: (files) => desk.setOpenFiles(files.flatMap((f) => (f.id ? [f.id] : []))),
 	loadSettings: () => desk.settings(),
 	saveSettings: (s) => desk.saveSettings(s),
+	settingsLocation: 'In settings.json in Oxygen’s app data folder (About › System shows where).',
+	setZoom: (factor) => desk.setZoom(factor),
+	setMenuKeys: (keys) => desk.setMenuKeys(keys),
+	about: async () => {
+		const a = await desk.about();
+		return [
+			{ label: 'Electron', value: `${a.electron} (Chromium ${a.chrome}, Node ${a.node})` },
+			{ label: 'Operating system', value: a.platform },
+			{ label: 'Settings file', value: a.settings },
+		];
+	},
 	game: {
 		status: () => desk.gameStatus(),
 		onStatus: (cb) => statusListeners.push(cb),
@@ -95,6 +106,8 @@ desk.onMenu((cmd) => {
 	else if (cmd === 'save') void w.save();
 	else if (cmd === 'palette') w.paletteOpen = true;
 	else if (cmd === 'openPack') void w.openPack();
+	else if (cmd === 'settings') w.openSettings();
+	else if (cmd === 'about') w.openAbout();
 });
 
 // reopen what was open last time (or files passed on the command line); otherwise the start screen. Files opened

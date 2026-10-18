@@ -3,7 +3,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab, toggleLineComment
 import { bracketMatching, codeFolding, foldGutter, foldKeymap, foldService, indentUnit, LanguageSupport, StreamLanguage } from '@codemirror/language';
 import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search';
 import { linter, lintGutter, type Diagnostic } from '@codemirror/lint';
-import { Compartment, EditorState, Facet, StateEffect, StateField, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, Facet, Prec, StateEffect, StateField, type Extension } from '@codemirror/state';
 import {
 	Decoration,
 	drawSelection,
@@ -331,15 +331,52 @@ export interface MolangEditorOptions {
 	ownHistory?: boolean;
 }
 
+/** Molang editor commands whose keys the app can rebind (Settings › Keyboard) */
+export type MolangKeyCommand = 'rename' | 'definition' | 'references' | 'comment' | 'format';
+
+const KEY_COMMANDS: Record<MolangKeyCommand, (view: EditorView) => boolean> = {
+	rename: renameAtCursor,
+	definition: gotoDefinition,
+	references: findReferences,
+	comment: toggleLineComment,
+	format: formatDocument,
+};
+
+/** the app's bindings: which key events run each command (null: the defaults below) */
+let boundKeys: Partial<Record<MolangKeyCommand, (e: KeyboardEvent) => boolean>> | null = null;
+
+/** Rebind the Molang editor commands, in every editor at once: each gets a test for its key events */
+export function setMolangKeys(keys: Partial<Record<MolangKeyCommand, (e: KeyboardEvent) => boolean>> | null): void {
+	boundKeys = keys;
+}
+
+const reboundKeys = Prec.highest(
+	EditorView.domEventHandlers({
+		keydown(e, view) {
+			if (!boundKeys) return false;
+			for (const [id, test] of Object.entries(boundKeys) as [MolangKeyCommand, (e: KeyboardEvent) => boolean][]) {
+				if (test(e) && KEY_COMMANDS[id](view)) {
+					e.preventDefault();
+					return true;
+				}
+			}
+			return false;
+		},
+	}),
+);
+
+/** a default key, until the app rebinds the commands */
+const byDefault = (id: MolangKeyCommand) => (view: EditorView) => !boundKeys && KEY_COMMANDS[id](view);
+
 export function molang(options: MolangEditorOptions = {}): Extension {
 	const keys: KeyBinding[] = [
 		// Tab accepts the highlighted suggestion like Enter (VS Code does both); without a list open it falls through
 		{ key: 'Tab', run: acceptCompletion },
-		{ key: 'Shift-Alt-f', run: formatDocument },
-		{ key: 'F2', run: renameAtCursor },
-		{ key: 'F12', run: gotoDefinition },
-		{ key: 'Shift-F12', run: findReferences },
-		{ key: 'Mod-/', run: toggleLineComment },
+		{ key: 'Shift-Alt-f', run: byDefault('format') },
+		{ key: 'F2', run: byDefault('rename') },
+		{ key: 'F12', run: byDefault('definition') },
+		{ key: 'Shift-F12', run: byDefault('references') },
+		{ key: 'Mod-/', run: byDefault('comment') },
 		...closeBracketsKeymap,
 		...completionKeymap,
 	];
@@ -379,7 +416,9 @@ export function molang(options: MolangEditorOptions = {}): Extension {
 		signatureField,
 		options.lint === false ? [] : [molangLinter, options.singleLine ? [] : lintGutter()],
 		options.ownHistory === false ? [] : [history(), keymap.of(historyKeymap)],
-		keymap.of([...keys, ...defaultKeymap]),
+		reboundKeys,
+		// CodeMirror's own Mod-/ comments too: ours (above) does, as long as it's bound there
+		keymap.of([...keys, ...defaultKeymap.filter((k) => k.key !== 'Mod-/')]),
 		options.singleLine ? EditorView.contentAttributes.of({ 'aria-multiline': 'false' }) : EditorView.lineWrapping,
 	];
 }

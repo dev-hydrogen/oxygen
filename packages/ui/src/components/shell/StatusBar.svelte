@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { Workspace } from '../../state/workspace.svelte';
 
 	interface Props {
@@ -22,7 +23,7 @@
 		notice = n.text;
 		noticeKind = n.kind;
 		clearTimeout(timer);
-		timer = setTimeout(() => (notice = null), 3500);
+		timer = setTimeout(() => (notice = null), untrack(() => workspace.prefs.noticeSeconds) * 1000);
 	});
 </script>
 

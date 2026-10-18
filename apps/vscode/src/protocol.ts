@@ -7,7 +7,9 @@ export interface TextEdit {
 }
 
 export type ToWebview =
-	| { type: 'init'; text: string; version: number; name: string; uri: string; mode: 'full' | 'preview'; settings: Record<string, unknown>; theme: 'vscode' | 'oxygen' }
+	| { type: 'init'; text: string; version: number; name: string; uri: string; mode: 'full' | 'preview'; settings: Record<string, unknown>; theme: 'vscode' | 'oxygen'; about?: { label: string; value: string }[] }
+	/** Another Oxygen editor changed the settings (preferences, keys) */
+	| { type: 'settings'; settings: Record<string, unknown> }
 	/** The document changed outside Oxygen (typing in a text editor, undo, git): replace the text */
 	| { type: 'external'; text: string; version: number }
 	/** Switch the preview to another file (preview view follows the active editor) */

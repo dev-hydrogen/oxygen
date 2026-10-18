@@ -1,6 +1,6 @@
 name: Release
 
-# Push a version tag like 0.1.1 to build the desktop app on Windows, macOS and Linux and the VS Code extension, and
+# Push a version tag like 0.2.0 to build the desktop app on Windows, macOS and Linux and the VS Code extension, and
 # create a draft GitHub release with all of them. Review the draft and publish it from the Releases page.
 # Run it by hand (Actions › Release › Run workflow) to only build everything: the files are the run's artifacts.
 #

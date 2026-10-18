@@ -298,6 +298,11 @@ function registerIpc() {
 		storeSettings();
 	});
 	ipcMain.handle('settings', () => settings.ui ?? {});
+	ipcMain.on('menuKeys', (_e, keys: Record<string, string | null>) => {
+		menuKeys = keys;
+		buildMenu();
+	});
+	ipcMain.handle('about', () => ({ app: app.getVersion(), settings: settingsFile() }));
 	ipcMain.on('saveSettings', (_e, s: Record<string, unknown>) => {
 		settings.ui = s;
 		storeSettings();
@@ -328,24 +333,39 @@ function registerIpc() {
 	});
 }
 
+/** the keys the app has bound to the menu's commands (Settings › Keyboard), as accelerators */
+let menuKeys: Record<string, string | null> = {
+	new: 'CmdOrCtrl+Alt+N',
+	open: 'CmdOrCtrl+O',
+	openPack: null,
+	save: 'CmdOrCtrl+S',
+	palette: 'CmdOrCtrl+K',
+	settings: 'CmdOrCtrl+,',
+	about: null,
+};
+
 function buildMenu() {
 	const send = (cmd: string) => () => win?.webContents.send('menu', cmd);
+	// the app handles its keys itself; the menu shows the same ones, and answers them when the app lets one through
+	const item = (label: string, cmd: string): MenuItemConstructorOptions => ({ label, click: send(cmd), ...(menuKeys[cmd] ? { accelerator: menuKeys[cmd]! } : {}) });
 	const template: MenuItemConstructorOptions[] = [
 		{
 			label: 'File',
 			submenu: [
-				{ label: 'New effect', accelerator: 'CmdOrCtrl+Alt+N', click: send('new') },
-				{ label: 'Open…', accelerator: 'CmdOrCtrl+O', click: send('open') },
-				{ label: 'Open resource pack folder…', click: send('openPack') },
+				item('New effect', 'new'),
+				item('Open…', 'open'),
+				item('Open resource pack folder…', 'openPack'),
 				{ type: 'separator' },
-				{ label: 'Save', accelerator: 'CmdOrCtrl+S', click: send('save') },
+				item('Save', 'save'),
+				{ type: 'separator' },
+				item('Settings…', 'settings'),
 				{ type: 'separator' },
 				{ role: 'quit' },
 			],
 		},
 		{ label: 'Edit', submenu: [{ role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
-		{ label: 'View', submenu: [{ label: 'Commands…', accelerator: 'CmdOrCtrl+K', click: send('palette') }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }, { role: 'toggleDevTools' }] },
-		{ label: 'Help', submenu: [{ label: 'Bedrock particle documentation', click: () => void shell.openExternal('https://learn.microsoft.com/minecraft/creator/documents/particleeffects') }] },
+		{ label: 'View', submenu: [item('Commands…', 'palette'), { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }, { role: 'toggleDevTools' }] },
+		{ label: 'Help', submenu: [{ label: 'Bedrock particle documentation', click: () => void shell.openExternal('https://learn.microsoft.com/minecraft/creator/documents/particleeffects') }, { type: 'separator' }, item('About Oxygen', 'about')] },
 	];
 	Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

@@ -1,6 +1,6 @@
 # Changelog
 
-## Oxygen 0.1.1 (unreleased)
+## Oxygen 0.2.0
 
 ### Added
 
@@ -16,6 +16,19 @@
   analysis, animated GIFs, and a link to Minecraft itself (deploy, spawn, commands, content log).
 - The desktop app keeps one window: opening a file while it runs (from the command line, a file manager or an
   agent) opens it there, or brings its tab forward.
+- Settings (File › Settings…, Ctrl+, or the gear in the top bar): how a new effect starts playing, the camera
+  (field of view, turning, wheel and flying speeds, inverted up and down), the viewport's resolution, background
+  and helpers, the code text size, how long status messages stay and, in the desktop app, the window's zoom. A
+  search box looks through every setting and key. Settings can be exported, imported and reset.
+- Every key can be changed (Settings › Keyboard), including the camera's fly keys and the Molang editors' rename,
+  go to definition, uses, comment and format. Each panel, layout and preview toggle can get a key of its own.
+  Menus, tooltips, the command palette and the shortcuts sheet show the keys you chose, and the desktop app's
+  native menu follows them.
+- About Oxygen (Help menu, or click the logo): the version, what's new, what the engine and game data are built
+  from, system details to copy into a bug report, and credits.
+- New commands: step one frame, slower and faster playback, and next and previous open effect.
+- The rendering mode, the sky behind Vibrant Visuals and the Inspector's layout are remembered between visits, and
+  F frames the particles whenever no text field has focus (it needed the viewport focused).
 - Vibrant Visuals preview: auto exposure, measured in-game. Something emissive in view at night darkens the rest
   within half a second and lets go over a few seconds, as in the game. Still pictures from the MCP tools use the
   settled exposure; GIFs adapt over their frames.

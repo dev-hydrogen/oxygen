@@ -84,6 +84,39 @@ await page2.locator('.start .item:has-text("sparks.particle.json")').click();
 await page2.waitForFunction(() => window.oxygen?.active?.file.name === 'sparks.particle.json', null, { timeout: 5000 }).catch(() => {});
 check((await page2.evaluate(() => window.oxygen?.active?.file.name)) === 'sparks.particle.json', 'clicking a recent file opens it');
 
+// Settings: the native menu shows the keys bound in Oxygen, and opens Settings and About
+const menuItem = (top, label) =>
+	again.evaluate(({ Menu }, [top, label]) => {
+		const item = Menu.getApplicationMenu()?.items.find((i) => i.label === top)?.submenu?.items.find((i) => i.label === label);
+		return item ? { accelerator: item.accelerator ?? null } : null;
+	}, [top, label]);
+check((await menuItem('File', 'Save'))?.accelerator === 'CmdOrCtrl+S', 'the native menu shows Save on Ctrl+S');
+await page2.evaluate(() => (window.oxygen.prefs.keys = { 'file.save': ['Mod+Alt+S'], 'app.settings': [] }));
+await page2.waitForTimeout(300);
+const rebound = [await menuItem('File', 'Save'), await menuItem('File', 'Settings…')];
+check(rebound[0]?.accelerator === 'CmdOrCtrl+Alt+S' && rebound[1] && !rebound[1].accelerator, `the native menu follows rebound keys (${JSON.stringify(rebound)})`);
+await again.evaluate(({ Menu }) => Menu.getApplicationMenu().items.find((i) => i.label === 'File').submenu.items.find((i) => i.label === 'Settings…').click());
+await page2.waitForFunction(() => window.oxygen.settingsOpen, null, { timeout: 3000 }).catch(() => {});
+check(await page2.evaluate(() => window.oxygen.settingsOpen), 'File › Settings… opens Settings');
+await again.evaluate(({ Menu }) => Menu.getApplicationMenu().items.find((i) => i.label === 'Help').submenu.items.find((i) => i.label === 'About Oxygen').click());
+await page2.waitForFunction(() => window.oxygen.aboutOpen, null, { timeout: 3000 }).catch(() => {});
+const about = await page2.evaluate(() => window.oxygen.host.about());
+check(await page2.evaluate(() => window.oxygen.aboutOpen) && about.some((f) => f.label === 'Electron' && /^\d+\./.test(f.value)), `Help › About opens About, which knows the Electron version (${about.find((f) => f.label === 'Electron')?.value})`);
+await page2.evaluate(() => (window.oxygen.aboutOpen = false));
+// interface zoom (desktop only) zooms the whole window, and preferences land in settings.json
+const dpr = await page2.evaluate(() => window.devicePixelRatio);
+await page2.evaluate(() => (window.oxygen.prefs.zoom = 1.25));
+await page2.waitForTimeout(600);
+const zoomed = await page2.evaluate(() => window.devicePixelRatio);
+check(Math.abs(zoomed / dpr - 1.25) < 0.01, `interface zoom 125% zooms the window (${dpr} → ${zoomed} device pixels per CSS pixel)`);
+const stored = JSON.parse(readFileSync(join(dir, 'profile', 'settings.json'), 'utf8')).ui?.preferences;
+check(stored?.zoom === 1.25 && stored?.keys?.['file.save']?.[0] === 'Mod+Alt+S', 'preferences are kept in settings.json');
+await page2.evaluate(() => {
+	window.oxygen.prefs.zoom = 1;
+	window.oxygen.prefs.keys = {};
+});
+await page2.waitForTimeout(300);
+
 // baseline: a light effect, to tell the display's refresh cap from the cost of the heavy scene below
 await page2.waitForTimeout(2500);
 const baseFps = await page2.evaluate(() => Number(document.querySelector('[data-fps]')?.getAttribute('data-fps') ?? 0));

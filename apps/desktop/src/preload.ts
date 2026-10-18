@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import type { DesktopApi } from './api';
 
 const on = <T extends unknown[]>(channel: string, cb: (...args: T) => void) => {
@@ -27,6 +27,12 @@ const api: DesktopApi = {
 	onMenu: (cb) => on('menu', cb),
 	settings: () => ipcRenderer.invoke('settings'),
 	saveSettings: (s) => ipcRenderer.send('saveSettings', s),
+	setMenuKeys: (keys) => ipcRenderer.send('menuKeys', keys),
+	setZoom: (factor) => webFrame.setZoomFactor(factor),
+	about: async () => {
+		const own: { app: string; settings: string } = await ipcRenderer.invoke('about');
+		return { ...own, electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node, platform: `${process.platform} ${process.arch}` };
+	},
 	gameStatus: () => ipcRenderer.invoke('gameStatus'),
 	onGameStatus: (cb) => on('gameStatus', cb),
 	deploy: (file) => ipcRenderer.invoke('deploy', file),

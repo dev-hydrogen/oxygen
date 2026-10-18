@@ -9,9 +9,28 @@ import { AUTO_EXPOSURE } from '@oxygen/scene';
 import { EmitterMarkers, FacingOverlay, ShapeGizmo, VelocityOverlay } from './overlays';
 import { CameraRig } from './camera';
 import { DEFAULT_GIZMOS, type GizmoHit, type Gizmos } from './gizmos';
+import { heldKey, isMac } from '../lib/keys';
 
-/** the classic viewport's background */
+/** the classic viewport's background, unless Settings › Viewport says otherwise */
 const BACKDROP = 0x161a26;
+
+export type FlyAction = 'forward' | 'back' | 'left' | 'right' | 'up' | 'down' | 'fast';
+export const DEFAULT_FLY_KEYS: Record<FlyAction, string[]> = { forward: ['W'], back: ['S'], left: ['A'], right: ['D'], up: ['E'], down: ['Q'], fast: ['Shift'] };
+
+/** How the viewport handles (Settings › Viewport) */
+export interface ViewportControls {
+	fov: number;
+	turnSpeed: number;
+	invertY: boolean;
+	zoomSpeed: number;
+	flySpeed: number;
+	fastFactor: number;
+	/** pixels per CSS pixel; 0 = the screen's own, up to 2 */
+	resolution: number;
+	/** #rrggbb */
+	background: string;
+	flyKeys: Record<FlyAction, string[]>;
+}
 
 export interface ViewportOptions {
 	textures: TextureProvider;
@@ -72,23 +91,36 @@ export class ViewportScene {
 	/** which helpers are drawn (each can be hidden on its own) */
 	gizmos: Gizmos = { ...DEFAULT_GIZMOS };
 	fps = 0;
-	/** keys held for fly movement (W A S D Q E, Shift to go faster) */
-	private keys = new Set<string>();
+	/** the keys bound to flying (W A S D, Q E, Shift faster unless rebound) */
+	private flyKeys: Record<FlyAction, string[]> = DEFAULT_FLY_KEYS;
+	private flySpeed = 1;
+	private fastFactor = 3;
+	private resolution = 0;
+	private backdrop = BACKDROP;
+	/** fly actions held, by the physical key holding them (a key's character can change while it's down) */
+	private held = new Map<string, FlyAction[]>();
+	private readonly mac = isMac();
 	private onKeyDown = (e: KeyboardEvent) => {
-		if (e.ctrlKey || e.metaKey || e.altKey) return;
-		const k = e.key.toLowerCase();
-		if ('wasdqe'.includes(k) && k.length === 1) {
-			this.keys.add(k);
-			e.preventDefault();
-		}
-		if (e.key === 'Shift') this.keys.add('shift');
-		if (k === 'f' && !e.repeat) this.frameAll();
+		const k = heldKey(e, this.mac);
+		if (!k) return;
+		const actions = (Object.keys(this.flyKeys) as FlyAction[]).filter((a) => this.flyKeys[a].includes(k));
+		if (!actions.length) return;
+		const modifier = k === 'Shift' || k === 'Alt' || k === 'Mod' || k === 'Ctrl' || k === 'Meta';
+		// a shortcut (Ctrl+S) isn't a fly key, unless the modifier is the one bound to flying faster
+		const fastMods = this.flyKeys.fast;
+		const otherMod = (e.ctrlKey && !fastMods.includes(this.mac ? 'Ctrl' : 'Mod')) || (e.metaKey && !fastMods.includes(this.mac ? 'Mod' : 'Meta')) || (e.altKey && !fastMods.includes('Alt'));
+		if (!modifier && otherMod) return;
+		this.held.set(e.code || k, actions);
+		if (!modifier) e.preventDefault();
 	};
 	private onKeyUp = (e: KeyboardEvent) => {
-		this.keys.delete(e.key.toLowerCase());
-		if (e.key === 'Shift') this.keys.delete('shift');
+		if (!this.held.delete(e.code)) this.held.delete(heldKey(e, this.mac) ?? '');
 	};
-	private onBlur = () => this.keys.clear();
+	private onBlur = () => this.held.clear();
+	private holding(a: FlyAction): boolean {
+		for (const list of this.held.values()) if (list.includes(a)) return true;
+		return false;
+	}
 	private fpsAcc = 0;
 	private fpsFrames = 0;
 
@@ -97,7 +129,7 @@ export class ViewportScene {
 		options: ViewportOptions,
 	) {
 		this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
-		this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+		this.renderer.setPixelRatio(this.pixelRatio());
 		this.renderer.setClearColor(BACKDROP, 1);
 		this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 		this.camera.position.set(3.6, 3.4, 5.2);
@@ -208,6 +240,35 @@ export class ViewportScene {
 		this.raf = requestAnimationFrame(loop);
 	}
 
+	/** Apply Settings › Viewport */
+	setControls(c: ViewportControls): void {
+		if (this.camera.fov !== c.fov) {
+			this.camera.fov = c.fov;
+			this.camera.updateProjectionMatrix();
+		}
+		this.controls.turnSpeed = c.turnSpeed;
+		this.controls.invertY = c.invertY;
+		this.controls.zoomSpeed = c.zoomSpeed;
+		this.flySpeed = c.flySpeed;
+		this.fastFactor = c.fastFactor;
+		this.flyKeys = c.flyKeys;
+		this.held.clear();
+		const bg = /^#[0-9a-f]{6}$/i.test(c.background) ? parseInt(c.background.slice(1), 16) : BACKDROP;
+		if (bg !== this.backdrop) {
+			this.backdrop = bg;
+			this.renderer.setClearColor(bg, 1);
+		}
+		if (c.resolution !== this.resolution) {
+			this.resolution = c.resolution;
+			this.renderer.setPixelRatio(this.pixelRatio());
+			this.resize(this.canvas.clientWidth, this.canvas.clientHeight);
+		}
+	}
+
+	private pixelRatio(): number {
+		return this.resolution > 0 ? this.resolution : Math.min(window.devicePixelRatio, 2);
+	}
+
 	resize(width: number, height: number): void {
 		if (width <= 0 || height <= 0) return;
 		this.renderer.setSize(width, height, false);
@@ -254,19 +315,19 @@ export class ViewportScene {
 
 	/** Move the camera and what it looks at together along the view axes */
 	private fly(dt: number) {
-		if (!this.keys.size) return;
+		if (!this.held.size) return;
 		const dist = this.controls.distance;
-		const speed = Math.max(0.5, dist) * (this.keys.has('shift') ? 3 : 1) * dt;
+		const speed = Math.max(0.5, dist) * this.flySpeed * (this.holding('fast') ? this.fastFactor : 1) * dt;
 		const fwd = new THREE.Vector3();
 		this.camera.getWorldDirection(fwd);
 		const right = new THREE.Vector3().crossVectors(fwd, this.camera.up).normalize();
 		const move = new THREE.Vector3();
-		if (this.keys.has('w')) move.add(fwd);
-		if (this.keys.has('s')) move.sub(fwd);
-		if (this.keys.has('d')) move.add(right);
-		if (this.keys.has('a')) move.sub(right);
-		if (this.keys.has('e')) move.y += 1;
-		if (this.keys.has('q')) move.y -= 1;
+		if (this.holding('forward')) move.add(fwd);
+		if (this.holding('back')) move.sub(fwd);
+		if (this.holding('right')) move.add(right);
+		if (this.holding('left')) move.sub(right);
+		if (this.holding('up')) move.y += 1;
+		if (this.holding('down')) move.y -= 1;
 		if (move.lengthSq() === 0) return;
 		move.normalize().multiplyScalar(speed);
 		this.controls.translate(move);
@@ -337,7 +398,7 @@ export class ViewportScene {
 			this.particles.vibrant = VibrantPipeline.settings(s!.vvLighting, s!.timeOfDay, s!.vvFromPack.lighting);
 			// the measured sky, so blended and additive particles sit on what the game shows behind them; or the
 			// classic backdrop, run backwards through the tone mapper so it comes out the same
-			this.scene.background = this.vvSky ? VibrantPipeline.sky(s!.timeOfDay, s!.vvGrading) : VibrantPipeline.backdrop(s!.vvGrading, BACKDROP);
+			this.scene.background = this.vvSky ? VibrantPipeline.sky(s!.timeOfDay, s!.vvGrading) : VibrantPipeline.backdrop(s!.vvGrading, this.backdrop);
 			this.particles.syncEmitters(all(), this.camera);
 		};
 		// auto exposure meters against the game's scene at this time of day

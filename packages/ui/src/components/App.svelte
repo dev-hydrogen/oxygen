@@ -2,8 +2,8 @@
 	import { createDockview, type AddPanelPositionOptions, type DockviewApi } from 'dockview-core';
 	import { mount, onDestroy, onMount, unmount, type Component } from 'svelte';
 	import type { LayoutName, Workspace } from '../state/workspace.svelte';
-	import { flushEdits } from '../lib/flush';
-	import { save } from '../lib/actions';
+	import { bindMolangKeys, handleKey } from '../lib/keyboard';
+	import { toAccelerator } from '../lib/keys';
 	import ContextPanel from './panels/ContextPanel.svelte';
 	import CurvesPanel from './panels/CurvesPanel.svelte';
 	import EventsPanel from './panels/EventsPanel.svelte';
@@ -27,6 +27,8 @@
 	import CommandPalette from './shell/CommandPalette.svelte';
 	import RenameDialog from './shell/RenameDialog.svelte';
 	import ShortcutsDialog from './shell/ShortcutsDialog.svelte';
+	import SettingsDialog from './shell/SettingsDialog.svelte';
+	import AboutDialog from './shell/AboutDialog.svelte';
 
 	interface Props {
 		workspace: Workspace;
@@ -54,6 +56,9 @@
 		texture: { title: 'Texture', component: TexturePanel },
 		vibrant: { title: 'Vibrant Visuals', component: VibrantPanel },
 	};
+	// every panel gets a command keys can be bound to
+	// svelte-ignore state_referenced_locally
+	workspace.panelTitles = Object.fromEntries(Object.entries(PANELS).map(([id, p]) => [id, { title: p.title }]));
 
 	function defaultLayout(a: DockviewApi) {
 		a.addPanel({ id: 'viewport', component: 'viewport', title: 'Viewport' });
@@ -232,7 +237,7 @@
 		api.onDidAddPanel(trackPanels);
 		api.onDidRemovePanel(trackPanels);
 		let restored = false;
-		void workspace.host.loadSettings().then((settings) => {
+		void workspace.loadSettings().then((settings) => {
 			if (restored || !api) return;
 			const layout = settings.layout;
 			if (layout) {
@@ -247,7 +252,7 @@
 			restored = true;
 			trackPanels();
 			api.onDidLayoutChange(() => {
-				workspace.host.loadSettings().then((s) => workspace.host.saveSettings({ ...s, layout: api!.toJSON() }));
+				if (api) workspace.updateSettings({ layout: api.toJSON() });
 			});
 		});
 		window.addEventListener('keydown', onKey);
@@ -273,49 +278,28 @@
 		api?.dispose();
 	});
 
-	function inEditor(e: KeyboardEvent): boolean {
-		const t = e.target as HTMLElement | null;
-		return !!t && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
-	}
+	const onKey = (e: KeyboardEvent) => handleKey(workspace, e);
 
-	function onKey(e: KeyboardEvent) {
-		const mod = e.ctrlKey || e.metaKey;
-		const s = workspace.active;
-		if ((mod && e.key.toLowerCase() === 'k') || (mod && e.shiftKey && e.key.toLowerCase() === 'p')) {
-			e.preventDefault();
-			workspace.paletteOpen = !workspace.paletteOpen;
-		} else if (mod && e.key.toLowerCase() === 's') {
-			e.preventDefault();
-			save(workspace, e.shiftKey);
-		} else if (mod && e.key.toLowerCase() === 'o') {
-			e.preventDefault();
-			void workspace.openFiles();
-		} else if (mod && e.altKey && e.key.toLowerCase() === 'n') {
-			e.preventDefault();
-			workspace.newEffect();
-		} else if (mod && !e.shiftKey && e.key.toLowerCase() === 'z' && s) {
-			// Molang editors leave undo to the document, so one history covers every editor
-			e.preventDefault();
-			flushEdits();
-			s.doc.history.seal();
-			workspace.undo(s);
-		} else if (mod && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z')) && s) {
-			e.preventDefault();
-			flushEdits();
-			workspace.redo(s);
-		} else if (!inEditor(e) && !mod && e.key === '?') {
-			e.preventDefault();
-			workspace.shortcutsOpen = !workspace.shortcutsOpen;
-		} else if (!inEditor(e) && !mod && s) {
-			if (e.key === ' ') {
-				e.preventDefault();
-				s.togglePlay();
-			} else if (e.key.toLowerCase() === 'r') s.restart();
-		}
-	}
+	// preferences: kept by the host, and applied where they act
+	$effect(() => {
+		void $state.snapshot(workspace.prefs);
+		workspace.savePreferences();
+	});
+	$effect(() => bindMolangKeys(workspace.keymap));
+	$effect(() => {
+		const zoom = workspace.prefs.zoom;
+		if (workspace.prefsLoaded) workspace.host.setZoom?.(zoom);
+	});
+	// the desktop app's native menu shows (and answers to) the same keys
+	$effect(() => {
+		const km = workspace.keymap;
+		const menu: Record<string, string> = { new: 'file.new', open: 'file.open', openPack: 'file.openPack', save: 'file.save', palette: 'app.commands', settings: 'app.settings', about: 'app.about' };
+		workspace.host.setMenuKeys?.(Object.fromEntries(Object.entries(menu).map(([cmd, id]) => [cmd, km.keys(id).map(toAccelerator).find((a) => a) ?? null])));
+	});
+	const codeSize = $derived(workspace.prefs.codeSize);
 </script>
 
-<div class="ox-root app">
+<div class="ox-root app" style:--ox-code-size={codeSize ? `${codeSize}px` : undefined} style:--ox-code-line={codeSize ? `${Math.round(codeSize * 1.54)}px` : undefined}>
 	<TopBar {workspace} panels={PANELS} />
 	<div class="dockwrap">
 		<div class="dock" bind:this={dockEl}></div>
@@ -325,6 +309,8 @@
 	<CommandPalette {workspace} panels={PANELS} />
 	<RenameDialog {workspace} />
 	<ShortcutsDialog {workspace} />
+	<SettingsDialog {workspace} />
+	<AboutDialog {workspace} />
 </div>
 
 <style>

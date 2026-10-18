@@ -1,61 +1,49 @@
 <script lang="ts">
 	import type { Workspace } from '../../state/workspace.svelte';
+	import { EDITOR_KEYS } from '../../lib/keys';
+	import Chord from './Chord.svelte';
 
 	interface Props {
 		workspace: Workspace;
 	}
 
 	let { workspace }: Props = $props();
+	const km = $derived(workspace.keymap);
 
-	const GROUPS: { title: string; note?: string; keys: [string, string][] }[] = [
-		{
-			title: 'Anywhere',
-			keys: [
-				['Ctrl K', 'Commands'],
-				['Ctrl S', 'Save'],
-				['Ctrl O', 'Open files'],
-				['Ctrl Alt N', 'New effect'],
-				['Ctrl Z', 'Undo (one history for every editor)'],
-				['Ctrl Y', 'Redo'],
-				['?', 'This list'],
-			],
-		},
-		{
-			title: 'Preview',
-			note: 'when no text field has focus',
-			keys: [
-				['Space', 'Play / pause'],
-				['R', 'Restart'],
-				['F', 'Frame the particles'],
-				['Click', 'Inspect the particle under the cursor'],
-				['Drag', 'Orbit around the particle or ground under the cursor'],
-				['Right drag', 'Look around; hold W A S D to fly'],
-				['Middle drag · Shift drag', 'Pan'],
-				['Wheel', 'Move toward what is under the cursor'],
-				['W A S D', 'Fly the camera (Q down, E up, Shift faster)'],
-			],
-		},
-		{
-			title: 'Molang editors',
-			keys: [
-				['Ctrl Space', 'Complete'],
-				['F2', 'Rename a variable everywhere'],
-				['F12 · Ctrl click', 'Go to where it is set'],
-				['Shift F12', 'List its uses'],
-				['Ctrl D', 'Select the next occurrence'],
-				['Alt click', 'Add a cursor'],
-				['Shift Alt drag', 'Column selection'],
-				['Ctrl /', 'Comment (kept in the oxygen block)'],
-				['Shift Alt F', 'Format'],
-				['Ctrl F', 'Find and replace'],
-				['Ctrl Shift [ · ]', 'Fold · unfold'],
-			],
-		},
-		{
-			title: 'Panels',
-			keys: [['Double-click a tab', 'Maximize the panel (again to restore)']],
-		},
-	];
+	/** what the mouse does: not rebindable */
+	const MOUSE: Record<string, [string, string][]> = {
+		Preview: [
+			['Click', 'Inspect the particle under the cursor'],
+			['Drag', 'Orbit around the particle or ground under the cursor'],
+			['Right drag', 'Look around; hold the fly keys to fly'],
+			['Middle drag · Shift drag', 'Pan'],
+			['Wheel', 'Move toward what is under the cursor'],
+		],
+		'Molang editors': [
+			['Ctrl click', 'Go to where it is set'],
+			['Alt click', 'Add a cursor'],
+			['Shift Alt drag', 'Column selection'],
+		],
+		Panels: [['Double-click a tab', 'Maximize the panel (again to restore)']],
+	};
+	const NOTES: Record<string, string> = { Preview: 'when no text field has focus', Camera: 'held, in the viewport' };
+
+	/** the bound commands by group, in the keymap's order */
+	const groups = $derived.by(() => {
+		const out = new Map<string, { label: string; keys: string[] }[]>();
+		for (const c of km.commands) {
+			const keys = km.keys(c.id);
+			if (!keys.length) continue;
+			const g = c.group === 'Oxygen' ? 'Anywhere' : c.group === 'File' || c.group === 'Edit' ? 'Anywhere' : c.group;
+			if (!out.has(g)) out.set(g, []);
+			out.get(g)!.push({ label: c.label, keys });
+		}
+		const editor = out.get('Molang editors') ?? [];
+		for (const e of EDITOR_KEYS.slice(0, 5)) editor.push({ label: e.label, keys: [e.keys] });
+		out.set('Molang editors', editor);
+		for (const g of Object.keys(MOUSE)) if (!out.has(g)) out.set(g, []);
+		return [...out.entries()].map(([title, keys]) => ({ title, keys, mouse: MOUSE[title] ?? [] }));
+	});
 
 	const close = () => (workspace.shortcutsOpen = false);
 	/** mouse words read as text, everything else as a key cap */
@@ -71,14 +59,19 @@
 	<div class="dialog" role="dialog" aria-label="Keyboard shortcuts">
 		<div class="top">
 			<h3>Keyboard shortcuts</h3>
+			<button class="customize" onclick={() => workspace.openSettings('keyboard')}>Change keys…</button>
 			<button class="x" aria-label="Close" onclick={close}>×</button>
 		</div>
 		<div class="groups">
-			{#each GROUPS as g (g.title)}
+			{#each groups as g (g.title)}
 				<section>
-					<h4>{g.title}{#if g.note}<span class="note">{g.note}</span>{/if}</h4>
+					<h4>{g.title}{#if NOTES[g.title]}<span class="note">{NOTES[g.title]}</span>{/if}</h4>
 					<dl>
-						{#each g.keys as [k, what] (k)}
+						{#each g.keys as k (k.label)}
+							<dt>{#each k.keys as chord, i (chord)}{#if i}<span class="or">or</span>{/if}<Chord {chord} mac={km.mac} />{/each}</dt>
+							<dd>{k.label}</dd>
+						{/each}
+						{#each g.mouse as [k, what] (k)}
 							<dt>{#each k.split(' · ') as alt, i (i)}{#if i}<span class="or">or</span>{/if}{#each alt.split(' ') as part, j (j)}{#if isKey(part)}<kbd>{part}</kbd>{:else}<span class="mouse">{part}</span>{/if}{/each}{/each}</dt>
 							<dd>{what}</dd>
 						{/each}
@@ -121,8 +114,22 @@
 		font-size: 13.5px;
 		font-weight: 600;
 	}
-	.x {
+	.customize {
 		margin-left: auto;
+		margin-right: 8px;
+		height: 24px;
+		padding: 0 10px;
+		border: 1px solid var(--ox-rule-strong);
+		border-radius: var(--ox-radius);
+		background: none;
+		color: var(--ox-haze);
+		cursor: pointer;
+	}
+	.customize:hover {
+		color: var(--ox-frost);
+		background: var(--ox-hover);
+	}
+	.x {
 		border: none;
 		background: none;
 		color: var(--ox-haze);

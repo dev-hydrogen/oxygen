@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { PackIndex } from './pack';
 import type { TextEdit, ToExtension, ToWebview } from './protocol';
-import { answerRequest, localRoots, webviewHtml, writePackFile } from './webview';
+import { aboutVsCode, answerRequest, localRoots, webviewHtml, writePackFile } from './webview';
 
 /**
  * Oxygen as a custom text editor. The VS Code TextDocument stays the source of truth:
@@ -33,6 +33,7 @@ export class OxygenEditorProvider implements vscode.CustomTextEditorProvider {
 			mode: 'full',
 			settings: this.context.globalState.get('oxygen.ui') ?? {},
 			theme: vscode.workspace.getConfiguration('oxygen').get('theme', 'vscode'),
+			about: aboutVsCode(this.context),
 		});
 		// the document travels in the HTML, so the editor starts without a round trip
 		webview.html = webviewHtml(webview, this.context.extensionUri, init());
@@ -94,6 +95,8 @@ export class OxygenEditorProvider implements vscode.CustomTextEditorProvider {
 					break;
 				case 'settings':
 					void this.context.globalState.update('oxygen.ui', msg.settings);
+					// the other open editors take the same preferences
+					for (const set of this.panels.values()) for (const other of set) if (other !== panel) void other.webview.postMessage({ type: 'settings', settings: msg.settings } satisfies ToWebview);
 					break;
 				case 'request':
 					void answerRequest(webview, this.pack, document.uri, msg);

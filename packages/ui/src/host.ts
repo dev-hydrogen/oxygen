@@ -56,6 +56,14 @@ export interface Host {
 	/** Persisted UI settings (layout, preferences) */
 	loadSettings(): Promise<Record<string, unknown>>;
 	saveSettings(settings: Record<string, unknown>): void;
+	/** Where the settings are kept, in words (Settings › Data) */
+	settingsLocation?: string;
+	/** Zoom the whole interface (1 = 100%), for hosts that own their window (desktop) */
+	setZoom?(factor: number): void;
+	/** The keys the host's own menu shows and answers to, as Electron accelerators by menu command (null: none) */
+	setMenuKeys?(keys: Record<string, string | null>): void;
+	/** What the host knows about where Oxygen runs (versions of Electron, VS Code…), for About › System */
+	about?(): Promise<{ label: string; value: string }[]>;
 }
 
 export interface GameStatus {

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { isParticleDocument, type PackIndex } from './pack';
 import type { ToExtension, ToWebview } from './protocol';
-import { answerRequest, localRoots, webviewHtml } from './webview';
+import { aboutVsCode, answerRequest, localRoots, webviewHtml } from './webview';
 
 /** Live preview of the particle file in the active text editor (lite mode) */
 export class PreviewViewProvider implements vscode.WebviewViewProvider {
@@ -35,7 +35,7 @@ export class PreviewViewProvider implements vscode.WebviewViewProvider {
 				const doc = this.current ?? vscode.window.activeTextEditor?.document;
 				const text = doc && isParticleDocument(doc) ? doc.getText() : '';
 				if (doc && isParticleDocument(doc)) this.current = doc;
-				this.post({ type: 'init', text, version: doc?.version ?? 0, name: doc?.uri.path.split('/').pop() ?? '', uri: doc?.uri.toString() ?? '', mode: 'preview', settings: {}, theme: vscode.workspace.getConfiguration('oxygen').get('theme', 'vscode') });
+				this.post({ type: 'init', text, version: doc?.version ?? 0, name: doc?.uri.path.split('/').pop() ?? '', uri: doc?.uri.toString() ?? '', mode: 'preview', settings: this.context.globalState.get('oxygen.ui') ?? {}, theme: vscode.workspace.getConfiguration('oxygen').get('theme', 'vscode'), about: aboutVsCode(this.context) });
 			} else if (msg.type === 'request' && this.current) void answerRequest(view.webview, this.pack, this.current.uri, msg);
 			else if (msg.type === 'openExample') void this.pack.examples.open(msg.name);
 		});

@@ -49,6 +49,12 @@ export interface DesktopApi {
 	onMenu(cb: (command: string) => void): void;
 	settings(): Promise<Record<string, unknown>>;
 	saveSettings(s: Record<string, unknown>): void;
+	/** the keys the native menu shows for its commands (Electron accelerators; null: none) */
+	setMenuKeys(keys: Record<string, string | null>): void;
+	/** zoom the window's contents (1 = 100%) */
+	setZoom(factor: number): void;
+	/** versions of what the app runs on, and where it keeps its settings */
+	about(): Promise<{ app: string; electron: string; chrome: string; node: string; platform: string; settings: string }>;
 	gameStatus(): Promise<DesktopGameStatus>;
 	onGameStatus(cb: (s: DesktopGameStatus) => void): void;
 	deploy(file: string | null): Promise<string>;

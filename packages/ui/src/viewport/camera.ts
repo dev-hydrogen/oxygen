@@ -14,6 +14,10 @@ export class CameraRig {
 	readonly target = new THREE.Vector3();
 	/** shown while orbiting: what the camera turns around */
 	readonly pivotMarker: THREE.Mesh;
+	/** Settings › Viewport: how fast dragging turns (1 = a full turn per 1.6 viewport heights), up/down flipped, wheel speed */
+	turnSpeed = 1;
+	invertY = false;
+	zoomSpeed = 1;
 	private yaw = 0;
 	private pitch = 0;
 	private focus = 5;
@@ -146,9 +150,9 @@ export class CameraRig {
 		d.y = y;
 		if (!dx && !dy) return;
 		if (d.mode === 'pan') return this.panBy(dx, dy, d.depth, h);
-		const rate = (2 * Math.PI) / Math.max(400, h * 1.6);
+		const rate = ((2 * Math.PI) / Math.max(400, h * 1.6)) * this.turnSpeed;
 		const dYaw = -dx * rate;
-		let dPitch = -dy * rate;
+		let dPitch = (this.invertY ? dy : -dy) * rate;
 		const limit = Math.PI / 2 - 0.001;
 		dPitch = THREE.MathUtils.clamp(this.pitch + dPitch, -limit, limit) - this.pitch;
 		if (d.mode === 'look') {
@@ -183,7 +187,7 @@ export class CameraRig {
 		const { x, y, w, h } = this.local(e);
 		// a notch (100 px, 3 lines) moves 15% of the way to what's under the cursor
 		const px = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * h : e.deltaY;
-		this.dollyToward(x, y, w, h, Math.pow(0.85, px / 100));
+		this.dollyToward(x, y, w, h, Math.pow(0.85, (px * this.zoomSpeed) / 100));
 	};
 
 	/** Move along the ray through (x, y) so the distance to what's there scales by 1/`factor` */
