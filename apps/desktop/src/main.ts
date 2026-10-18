@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { ConnectServer, deployHelper, deployPackDetailed, entryPath, findInstalls, latestContentLog, parseContentLog, particleSpawnCommand, readPack, scriptSpawnCommand } from '@oxygen/gamelink';
 import { parentInputsFor, spawnsOf, type EffectSpawns } from '@oxygen/effect';
 import type { DesktopFile, DesktopGameStatus, DesktopLogEntry } from './api';
+import { checkForUpdates, downloadUpdate, installUpdate, setAutomatic, startUpdates, updateState } from './updater';
 
 // tests (and side-by-side profiles) can point Oxygen at its own settings folder
 if (process.env.OXYGEN_USER_DATA) app.setPath('userData', process.env.OXYGEN_USER_DATA);
@@ -303,6 +304,11 @@ function registerIpc() {
 		buildMenu();
 	});
 	ipcMain.handle('about', () => ({ app: app.getVersion(), settings: settingsFile() }));
+	ipcMain.handle('updateStatus', () => updateState());
+	ipcMain.handle('checkForUpdates', () => checkForUpdates());
+	ipcMain.on('downloadUpdate', () => downloadUpdate());
+	ipcMain.on('installUpdate', () => installUpdate());
+	ipcMain.on('setAutoUpdate', (_e, on: boolean) => setAutomatic(on));
 	ipcMain.on('saveSettings', (_e, s: Record<string, unknown>) => {
 		settings.ui = s;
 		storeSettings();
@@ -389,6 +395,11 @@ function createWindow() {
 	// the app draws its own menu bar; the native one stays (macOS shows it, elsewhere it only provides the shortcuts)
 	if (process.platform !== 'darwin') win.setMenuBarVisibility(false);
 	win.once('ready-to-show', () => win?.show());
+	// links (About, Help, release pages) open in the browser; nothing opens another window
+	win.webContents.setWindowOpenHandler(({ url }) => {
+		if (/^https?:\/\//.test(url)) void shell.openExternal(url);
+		return { action: 'deny' };
+	});
 	void win.loadFile(join(__dirname, 'renderer', 'index.html'));
 	win.on('closed', () => (win = null));
 }
@@ -409,6 +420,9 @@ else {
 		// a taken port moves on to the next free one; the Game menu shows which (or why none)
 		void connect.start().then(() => win?.webContents.send('gameStatus', gameStatus()));
 		setInterval(pollContentLog, 1500);
+		// updates: on unless Settings › General turned them off
+		const prefs = (settings.ui as { preferences?: { autoUpdate?: unknown } } | undefined)?.preferences;
+		startUpdates((s) => win?.webContents.send('updateStatus', s), prefs?.autoUpdate !== false);
 		if (!win) createWindow();
 		app.on('activate', () => {
 			if (BrowserWindow.getAllWindows().length === 0) createWindow();

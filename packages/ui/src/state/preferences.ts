@@ -11,6 +11,8 @@ export interface Preferences {
 	// general
 	/** ask before closing an effect with unsaved changes */
 	confirmClose: boolean;
+	/** desktop app: download and install updates by themselves (off: only tell about them) */
+	autoUpdate: boolean;
 	/** how long status messages stay in the status bar, in seconds */
 	noticeSeconds: number;
 	/** desktop app: the whole interface's zoom (1 = 100%) */
@@ -54,6 +56,7 @@ export const DEFAULT_BACKGROUND = '#161a26';
 
 export const DEFAULT_PREFERENCES: Preferences = {
 	confirmClose: true,
+	autoUpdate: true,
 	noticeSeconds: 3.5,
 	zoom: 1,
 	codeSize: 0,
@@ -97,6 +100,7 @@ export function readPreferences(stored: unknown, legacy: Record<string, unknown>
 	const background = typeof s.background === 'string' && /^#[0-9a-f]{6}$/i.test(s.background) ? s.background.toLowerCase() : d.background;
 	return {
 		confirmClose: bool(s.confirmClose, d.confirmClose),
+		autoUpdate: bool(s.autoUpdate, d.autoUpdate),
 		noticeSeconds: num(s.noticeSeconds, 1, 30, d.noticeSeconds),
 		zoom: num(s.zoom, 0.5, 2, d.zoom),
 		codeSize: s.codeSize === 0 ? 0 : num(s.codeSize, 9, 24, d.codeSize),

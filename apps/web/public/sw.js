@@ -6,6 +6,8 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', (e) => {
 	const req = e.request;
 	if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+	// the app asking whether a newer version is deployed: only the network knows
+	if (req.cache === 'no-store') return;
 	const page = req.mode === 'navigate';
 	e.respondWith(
 		(async () => {

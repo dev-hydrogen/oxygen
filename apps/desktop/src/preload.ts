@@ -29,6 +29,12 @@ const api: DesktopApi = {
 	saveSettings: (s) => ipcRenderer.send('saveSettings', s),
 	setMenuKeys: (keys) => ipcRenderer.send('menuKeys', keys),
 	setZoom: (factor) => webFrame.setZoomFactor(factor),
+	updateStatus: () => ipcRenderer.invoke('updateStatus'),
+	onUpdateStatus: (cb) => on('updateStatus', cb),
+	checkForUpdates: () => ipcRenderer.invoke('checkForUpdates'),
+	downloadUpdate: () => ipcRenderer.send('downloadUpdate'),
+	installUpdate: () => ipcRenderer.send('installUpdate'),
+	setAutoUpdate: (on) => ipcRenderer.send('setAutoUpdate', on),
 	about: async () => {
 		const own: { app: string; settings: string } = await ipcRenderer.invoke('about');
 		return { ...own, electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node, platform: `${process.platform} ${process.arch}` };

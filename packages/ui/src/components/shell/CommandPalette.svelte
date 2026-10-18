@@ -62,6 +62,8 @@
 			run: () => void navigator.clipboard.writeText(MCP_PROMPT).then(() => workspace.say('Copied the prompt that sets up Oxygen’s MCP server. Paste it into your coding agent.')),
 		});
 		list.push({ label: 'System information', group: 'Help', run: () => workspace.openAbout('system') });
+		if (workspace.host.updates && workspace.host.kind !== 'web') list.push({ label: 'Check for updates', group: 'Help', run: () => void workspace.checkForUpdates() });
+		if (workspace.update.state === 'ready') list.push({ label: workspace.host.kind === 'web' ? 'Reload into the new version' : 'Restart to update', group: 'Help', run: () => workspace.installUpdate() });
 		list.push({ label: 'Keyboard shortcuts', group: 'Help', keys: k('app.shortcuts'), run: () => void (workspace.shortcutsOpen = true) });
 		if (s) {
 			list.push({ label: s.playing ? 'Pause' : s.finished ? 'Replay' : 'Play', group: 'Preview', keys: k('preview.play'), run: () => s.togglePlay() });

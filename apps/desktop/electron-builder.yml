@@ -16,11 +16,19 @@ extraFiles:
 # use the Electron the workspace already has instead of downloading another
 electronDist: node_modules/electron/dist
 npmRebuild: false
-publish: null
+# updates come from GitHub Releases: each build writes latest*.yml next to the installers, which the release carries
+# (the release workflow uploads them; building here never publishes anything)
+publish:
+  provider: github
+  owner: dev-hydrogen
+  repo: oxygen
+  releaseType: release
 win:
   target: nsis
   icon: build/icon.png
 nsis:
+  # no spaces: GitHub turns them into dots on upload, and latest.yml has to name the file as the release does
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true

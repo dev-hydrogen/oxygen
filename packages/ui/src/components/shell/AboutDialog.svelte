@@ -84,6 +84,20 @@
 					<img class="logo dark" src={logoDark} alt="Oxygen" />
 					<img class="logo light" src={logoLight} alt="Oxygen" />
 					<p class="version ox-num">Version {VERSION} · {HOSTS[workspace.host.kind]}</p>
+					{#if workspace.host.updates && workspace.host.kind !== 'web'}
+						{@const u = workspace.update}
+						<p class="updates">
+							{#if u.state === 'checking'}Checking for updates…
+							{:else if u.state === 'current'}Up to date.
+							{:else if u.state === 'available' && u.page}Oxygen {u.version} is out. <a href={u.page} target="_blank" rel="noreferrer">Download it</a>
+							{:else if u.state === 'available'}Oxygen {u.version} is out. <button class="inline" onclick={() => workspace.host.updates?.download?.()}>Download it</button>
+							{:else if u.state === 'downloading'}Downloading Oxygen {u.version}: {u.percent}%
+							{:else if u.state === 'ready'}Oxygen {u.version} is ready. <button class="inline" onclick={() => workspace.installUpdate()}>Restart to update</button>
+							{:else if u.state === 'error'}{u.message}
+							{:else if u.state === 'unsupported'}{u.reason}{/if}
+							{#if u.state !== 'checking' && u.state !== 'downloading' && u.state !== 'ready'}<button class="inline" onclick={() => void workspace.checkForUpdates()}>Check for updates</button>{/if}
+						</p>
+					{/if}
 					<p class="pitch">An editor for Minecraft Bedrock particle effects whose preview behaves the way the game does, quirks included: what you see while you work is what players will see.</p>
 				</div>
 				<div class="links">
@@ -246,6 +260,20 @@
 	.version {
 		margin: 0;
 		color: var(--ox-lox);
+	}
+	.updates {
+		margin: 0;
+		font-size: 11.5px;
+		color: var(--ox-haze);
+	}
+	.inline {
+		border: none;
+		background: none;
+		padding: 0 0 0 4px;
+		color: var(--ox-lox);
+		text-decoration: underline;
+		cursor: pointer;
+		font-size: inherit;
 	}
 	.pitch {
 		margin: 4px 0 0;

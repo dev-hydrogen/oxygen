@@ -45,6 +45,7 @@ file in the window already running.
 | `pnpm test:vscode` | The extension inside a real VS Code |
 | `pnpm test:webview-sync` | VS Code's text editor and Oxygen's editor staying in sync |
 | `pnpm test:desktop` | The desktop app end to end |
+| `pnpm test:update` | The packaged desktop app finding, downloading and offering an update from a local feed |
 | `pnpm test:soak` | Five minutes of switching files and editing (`-- --minutes 30` for longer) |
 
 The VS Code and desktop tests can also run against packaged builds:
@@ -116,6 +117,11 @@ automation server for screenshots and input (`tools/bedrock-mcp.mjs` is its clie
    (`oxygen-mcp.zip`, which the setup prompt in [agents.md](agents.md) downloads from the latest release), then
    creates a draft release with the newest changelog section as its notes. Check the draft on the Releases page and
    publish it.
+
+Publishing the release is what updates everyone: the desktop app looks at the latest published release (drafts
+don't count), using the `latest.yml` (Windows) and `latest-linux.yml` (AppImage) files the release carries; open
+web tabs offer a reload once the site is deployed; and MCP servers installed from `oxygen-mcp.zip` tell the agent.
+The macOS app can't install updates until it's signed and notarized, so it links to the release instead.
 
 If the repository has `VSCE_PAT` and `OVSX_PAT` secrets, the same tag also publishes the extension to the
 Visual Studio Marketplace and Open VSX.

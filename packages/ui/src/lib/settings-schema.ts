@@ -76,6 +76,15 @@ export const SETTINGS: SettingRow[] = [
 	},
 	{
 		section: 'general',
+		group: 'Updates',
+		key: 'autoUpdate',
+		label: 'Download and install updates by themselves',
+		help: 'Updates download in the background and install when Oxygen restarts. Off, Oxygen only says when there is one. On macOS it always says where to get it.',
+		control: { type: 'toggle' },
+		hosts: ['desktop'],
+	},
+	{
+		section: 'general',
 		group: 'Messages',
 		key: 'noticeSeconds',
 		label: 'Status messages stay for',

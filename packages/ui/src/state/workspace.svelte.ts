@@ -2,7 +2,7 @@ import { newEffect } from '@oxygen/format';
 import { parentInputsFor, spawnsOf } from '@oxygen/effect';
 import { parse as parseJsonc, type ParseError } from 'jsonc-parser';
 import { parseGrading, parseLighting, parseTextureSet } from '@oxygen/scene';
-import type { FileRef, Host, OpenedFile } from '../host';
+import type { FileRef, Host, OpenedFile, UpdateState } from '../host';
 import { EffectSession } from './session.svelte';
 import type { Gizmos } from '../viewport/gizmos';
 import { KEY_COMMANDS, Keymap, viewCommands } from '../lib/keys';
@@ -44,6 +44,10 @@ export class Workspace {
 	settingsSection = $state<SettingsSection>('general');
 	aboutOpen = $state(false);
 	aboutSection = $state<AboutSection>('about');
+	/** where updating Oxygen stands (hosts that update) */
+	update = $state<UpdateState>({ state: 'idle' });
+	/** the user asked to check: say how it ended, even when there's nothing new */
+	private manualCheck = false;
 	/** a key binding is being recorded: keys go to the recorder, not to commands */
 	recordingKeys = $state(false);
 	/** bumped to ask the viewport to frame the particles */
@@ -75,6 +79,35 @@ export class Workspace {
 	constructor(readonly host: Host) {
 		this.settings = host.loadSettings().catch(() => ({}));
 		void this.settings.then((s) => this.applySettings(s));
+		if (host.updates) {
+			host.updates.onStatus((s) => this.setUpdate(s));
+			void host.updates.status().then((s) => this.setUpdate(s));
+		}
+	}
+
+	private setUpdate(s: UpdateState): void {
+		this.update = s;
+		if (!this.manualCheck || s.state === 'checking' || s.state === 'idle') return;
+		this.manualCheck = false;
+		if (s.state === 'current') this.say(`Oxygen ${s.version} is the newest version.`);
+		else if (s.state === 'error') this.say(s.message, 'error');
+		else if (s.state === 'unsupported') this.say(s.reason);
+	}
+
+	/** Look for a newer Oxygen now, and say what came of it */
+	async checkForUpdates(): Promise<void> {
+		if (!this.host.updates) return;
+		this.manualCheck = true;
+		await this.host.updates.check();
+	}
+
+	/** Restart (or reload) into the update, after asking when there's unsaved work */
+	installUpdate(): void {
+		if (!this.host.updates) return;
+		const dirty = this.sessions.filter((s) => s.dirty).map((s) => s.file.name);
+		const verb = this.host.kind === 'web' ? 'Reload' : 'Restart';
+		if (dirty.length && !confirm(`${dirty.join(', ')} ${dirty.length === 1 ? 'has' : 'have'} unsaved changes, which ${verb.toLowerCase()}ing loses. ${verb} anyway? (Cancel, save, then ${verb.toLowerCase()}.)`)) return;
+		this.host.updates.install();
 	}
 
 	get inspectorView(): InspectorView {

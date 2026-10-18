@@ -69,10 +69,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.os }}
+          # latest*.yml and the blockmaps are what installed apps read to update themselves
           path: |
             apps/desktop/release/*.exe
             apps/desktop/release/*.dmg
             apps/desktop/release/*.AppImage
+            apps/desktop/release/latest*.yml
+            apps/desktop/release/*.blockmap
 
   release:
     needs: [extension, desktop]

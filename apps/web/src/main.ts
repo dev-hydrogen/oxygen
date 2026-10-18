@@ -1,6 +1,7 @@
 import { mountOxygen, readShareHash, type FileRef, type Host, type OpenedFile } from '@oxygen/ui';
 import { parentInputsFor, spawnsOf, type EffectSpawns } from '@oxygen/effect';
 import { allStored, getStored, putStored, touchStored } from './store';
+import { webUpdates } from './updates';
 
 /**
  * Browser host. With the File System Access API (Chromium) files open and save in place; without it (Firefox,
@@ -179,6 +180,7 @@ function pickFiles(setup: (input: HTMLInputElement) => void): Promise<File[]> {
 
 const host: Host = {
 	kind: 'web',
+	updates: webUpdates(),
 	async openFiles(): Promise<OpenedFile[]> {
 		if (pickers.showOpenFilePicker) {
 			try {

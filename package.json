@@ -24,6 +24,7 @@
 		"package:vscode": "pnpm --filter oxygen-particle-editor package",
 		"package:desktop": "pnpm --filter @oxygen/desktop package",
 		"package:mcp": "pnpm --filter @oxygen/mcp package",
+		"test:update": "node tools/update-test.mjs",
 		"test:game-loop": "pnpm --filter @oxygen/desktop build && node tools/game-loop-test.mjs",
 		"icons": "node tools/icons.mjs"
 	},

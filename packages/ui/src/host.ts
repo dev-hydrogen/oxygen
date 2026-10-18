@@ -64,6 +64,35 @@ export interface Host {
 	setMenuKeys?(keys: Record<string, string | null>): void;
 	/** What the host knows about where Oxygen runs (versions of Electron, VS Code…), for About › System */
 	about?(): Promise<{ label: string; value: string }[]>;
+	/** Updating Oxygen itself, for hosts that can (desktop: installs them; web: a newer deploy is a reload away) */
+	updates?: UpdateLink;
+}
+
+/** Where updating Oxygen stands */
+export type UpdateState =
+	| { state: 'idle' }
+	| { state: 'checking' }
+	| { state: 'current'; version: string }
+	/** a newer version exists; `page` is where to get it when it can't be installed from here (macOS) */
+	| { state: 'available'; version: string; page?: string }
+	| { state: 'downloading'; version: string; percent: number }
+	/** downloaded (desktop: restart to install) or deployed (web: reload); version null when unknown */
+	| { state: 'ready'; version: string | null }
+	| { state: 'error'; message: string }
+	/** this copy can't update itself (a development build) */
+	| { state: 'unsupported'; reason: string };
+
+export interface UpdateLink {
+	status(): Promise<UpdateState>;
+	onStatus(cb: (s: UpdateState) => void): void;
+	/** Look for a newer version now */
+	check(): Promise<void>;
+	/** Fetch an available update (when updates don't download by themselves) */
+	download?(): void;
+	/** Restart into the downloaded update (desktop) or reload into the new deploy (web) */
+	install(): void;
+	/** Download and install updates by themselves (Settings › General) */
+	setAutomatic?(on: boolean): void;
 }
 
 export interface GameStatus {

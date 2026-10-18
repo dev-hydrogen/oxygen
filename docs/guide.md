@@ -144,6 +144,15 @@ The desktop app can put your pack into Minecraft and start the effect in your wo
 
 The Problems panel also shows what the game's content log said about the file.
 
+## Updates
+
+- **Desktop app:** on Windows and Linux, new versions download in the background and install the next time Oxygen
+  restarts; the status bar offers *Restart to update* once one is ready (Oxygen asks first if anything is unsaved).
+  *Help › Check for updates…* looks right away, and *Settings › General* can make it only tell you instead. On
+  macOS, Oxygen tells you about a new version and links to its download.
+- **Web app:** always the newest when you open it. A tab left open notices a newer version and offers a reload.
+- **VS Code:** the extension updates through VS Code, like any other.
+
 ## Settings and keys
 
 *File › Settings…* (Ctrl+, or the gear in the top bar) has everything in one place, with a search box that looks

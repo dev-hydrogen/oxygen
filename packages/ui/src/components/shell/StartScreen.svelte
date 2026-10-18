@@ -8,6 +8,7 @@
 	}
 
 	let { workspace }: Props = $props();
+	const km = $derived(workspace.keymap);
 	let recent = $state<FileRef[]>([]);
 	let examples = $state<{ name: string; load: () => Promise<string> }[]>([]);
 
@@ -36,8 +37,8 @@
 		</header>
 
 		<div class="actions">
-			<button class="primary" onclick={() => workspace.newEffect()}>New effect <kbd>Ctrl Alt N</kbd></button>
-			{#if workspace.host.openFiles}<button onclick={() => workspace.openFiles()}>Open files… <kbd>Ctrl O</kbd></button>{/if}
+			<button class="primary" onclick={() => workspace.newEffect()}>New effect {#if km.label('file.new')}<kbd>{km.label('file.new')}</kbd>{/if}</button>
+			{#if workspace.host.openFiles}<button onclick={() => workspace.openFiles()}>Open files… {#if km.label('file.open')}<kbd>{km.label('file.open')}</kbd>{/if}</button>{/if}
 			{#if workspace.host.openPack}
 				<button onclick={() => workspace.openPack()}>Open resource pack…</button>
 			{/if}
@@ -67,7 +68,7 @@
 			</section>
 		</div>
 
-		<p class="tip dim">Ctrl K opens the command palette: every action, panel and layout is there.</p>
+		<p class="tip dim">{km.label('app.commands') ?? 'The Commands button'} opens the command palette: every action, panel and layout is there.</p>
 	</div>
 </div>
 

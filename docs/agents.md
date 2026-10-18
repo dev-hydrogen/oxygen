@@ -146,5 +146,8 @@ with a `manifest.json`, or else the folder holding `particles/`. From the pack i
 - Pictures come from software rendering in headless Chromium. They show exactly what the editor's viewport
   shows, but each one takes a moment; a sheet of four 480 × 360 pictures takes one to two seconds.
 - `edit_effect` refuses a file that isn't valid JSON. Fix that with `write_effect`, which replaces the whole text.
+- A server installed from the release zip checks GitHub for a newer release once a day. When there is one, the next
+  tool result says so and how to update (or paste the setup prompt again). `OXYGEN_MCP_UPDATE_CHECK=0` turns that
+  off; servers built from a clone never check.
 - The game tools change things outside Oxygen: `game_deploy` writes into the game's development pack folders and
   `game_command` runs commands in your world. Agents ask before calling tools like these unless you've allowed them.

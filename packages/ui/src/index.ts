@@ -7,7 +7,7 @@ import './styles/tokens.css';
 import './styles/dockview.css';
 import './styles/base.css';
 
-export type { FileRef, Host, OpenedFile } from './host';
+export type { FileRef, Host, OpenedFile, UpdateLink, UpdateState } from './host';
 export { Workspace } from './state/workspace.svelte';
 export { EffectSession } from './state/session.svelte';
 export { readShareHash, shareLink } from './lib/share';

@@ -1,5 +1,21 @@
 # Changelog
 
+## Oxygen 0.3.0 (unreleased)
+
+### Added
+
+- The desktop app updates itself on Windows and Linux: a new version downloads in the background and installs the
+  next time Oxygen restarts, or right away from *Restart to update* in the status bar (it asks first if anything
+  is unsaved). *Help › Check for updates…* looks now, and *Settings › General* can turn automatic downloads off.
+  On macOS it says when there's a new version and links to it. This starts with the first release after 0.2.0:
+  install that one by hand.
+- The web app tells a tab left open when a newer version is out, and reloads into it on request.
+- MCP servers installed from the release zip tell the agent when a newer release is out, and how to update.
+
+### Fixed
+
+- The start screen shows the keys you bound for New effect, Open files and Commands.
+
 ## Oxygen 0.2.0
 
 ### Added

@@ -17,8 +17,11 @@ import { sessionRequest } from './requests';
 import { existing, text, tool } from './util';
 import { registerDebugTools } from './debug-tools';
 import { registerGameTools } from './game';
+import { startUpdateCheck } from './update';
 
-const VERSION = '0.2.0';
+/** the package version, put in by build.mjs */
+declare const OXYGEN_MCP_VERSION: string;
+const VERSION = OXYGEN_MCP_VERSION;
 
 const browser = new PreviewBrowser();
 
@@ -382,6 +385,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 process.stdin.on('close', () => void browser.close());
 
+startUpdateCheck(VERSION, __dirname);
 server.connect(new StdioServerTransport()).catch((e) => {
 	console.error(e);
 	process.exit(1);

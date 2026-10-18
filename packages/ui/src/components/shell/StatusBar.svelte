@@ -9,6 +9,7 @@
 
 	let { workspace, onproblems }: Props = $props();
 	const s = $derived(workspace.active);
+	const u = $derived(workspace.update);
 	const counts = $derived.by(() => {
 		const all = s?.problems ?? [];
 		return { error: all.filter((p) => p.severity === 'error').length, warning: all.filter((p) => p.severity === 'warning').length };
@@ -43,6 +44,17 @@
 	{/if}
 	<span class="spacer"></span>
 	{#if notice}<span class="item notice" class:error={noticeKind === 'error'} role="status">{notice}</span>{/if}
+	{#if u.state === 'available' && u.page}
+		<a class="item update" href={u.page} target="_blank" rel="noreferrer" title="This copy can't install updates itself: the release page has the download">Oxygen {u.version} is out: download it</a>
+	{:else if u.state === 'available'}
+		<button class="item update" title="Download it now; it installs when Oxygen restarts" onclick={() => workspace.host.updates?.download?.()}>Oxygen {u.version} is out: download</button>
+	{:else if u.state === 'downloading'}
+		<span class="item dim" title="It installs when Oxygen restarts">Downloading Oxygen {u.version} · {u.percent}%</span>
+	{:else if u.state === 'ready'}
+		<button class="item update" title={workspace.host.kind === 'web' ? 'A newer Oxygen was published. Reload to use it.' : 'Restart Oxygen to install it, or it installs when you next quit'} onclick={() => workspace.installUpdate()}>
+			{workspace.host.kind === 'web' ? (u.version ? `Oxygen ${u.version} is out: reload` : 'Oxygen was updated: reload') : `Restart to update to ${u.version}`}
+		</button>
+	{/if}
 </footer>
 
 <style>
@@ -102,6 +114,17 @@
 	}
 	.notice {
 		color: var(--ox-frost);
+	}
+	.update {
+		border: none;
+		background: rgba(147, 189, 245, 0.16);
+		color: var(--ox-lox);
+		text-decoration: none;
+		cursor: pointer;
+		font-weight: 500;
+	}
+	.update:hover {
+		background: rgba(147, 189, 245, 0.26);
 	}
 	.notice.error {
 		color: var(--ox-error);

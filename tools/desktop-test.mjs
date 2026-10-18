@@ -115,6 +115,10 @@ await page2.evaluate(() => {
 	window.oxygen.prefs.zoom = 1;
 	window.oxygen.prefs.keys = {};
 });
+// updates: a development build says it doesn't update (tools/update-test.mjs checks a packaged one)
+await page2.evaluate(() => window.oxygen.checkForUpdates());
+await page2.waitForFunction(() => window.oxygen.update.state === 'unsupported', null, { timeout: 5000 }).catch(() => {});
+check((await page2.evaluate(() => window.oxygen.update.state)) === 'unsupported', 'Help › Check for updates in a development build says updates come with the installed app');
 await page2.waitForTimeout(300);
 
 // baseline: a light effect, to tell the display's refresh cap from the cost of the heavy scene below

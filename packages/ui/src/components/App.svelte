@@ -287,6 +287,10 @@
 	});
 	$effect(() => bindMolangKeys(workspace.keymap));
 	$effect(() => {
+		const auto = workspace.prefs.autoUpdate;
+		if (workspace.prefsLoaded) workspace.host.updates?.setAutomatic?.(auto);
+	});
+	$effect(() => {
 		const zoom = workspace.prefs.zoom;
 		if (workspace.prefsLoaded) workspace.host.setZoom?.(zoom);
 	});

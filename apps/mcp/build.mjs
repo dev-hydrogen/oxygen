@@ -2,7 +2,7 @@
 // what they read at run time: the examples, the vanilla sprites and Oxygen's guides.
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import * as esbuild from 'esbuild';
-import { chmodSync, cpSync, mkdirSync, rmSync } from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build as viteBuild } from 'vite';
@@ -27,6 +27,7 @@ await esbuild.build({
 	// prefer ESM builds: jsonc-parser's UMD build hides its requires from the bundler
 	mainFields: ['module', 'main'],
 	banner: { js: '#!/usr/bin/env node' },
+	define: { OXYGEN_MCP_VERSION: JSON.stringify(JSON.parse(readFileSync(resolve(here, 'package.json'), 'utf8')).version) },
 	sourcemap: true,
 	logLevel: 'warning',
 });

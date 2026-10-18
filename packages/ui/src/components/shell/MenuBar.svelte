@@ -142,6 +142,7 @@
 			{ label: 'Set up a coding agent…', title: 'A prompt that installs Oxygen’s MCP server in Claude Code, Codex and other agents', run: () => workspace.openAbout('agents') },
 			{ label: 'Report a problem', href: `${REPO}/issues/new` },
 			{ label: 'System information', run: () => workspace.openAbout('system') },
+			...(host.updates && host.kind !== 'web' ? [{ label: 'Check for updates…', run: () => void workspace.checkForUpdates() }] : []),
 			{ separator: true },
 			{ label: 'About Oxygen', keys: k('app.about'), run: () => workspace.openAbout('about') },
 		];

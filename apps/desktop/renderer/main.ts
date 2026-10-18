@@ -67,6 +67,14 @@ const host: Host = {
 	settingsLocation: 'In settings.json in Oxygen’s app data folder (About › System shows where).',
 	setZoom: (factor) => desk.setZoom(factor),
 	setMenuKeys: (keys) => desk.setMenuKeys(keys),
+	updates: {
+		status: () => desk.updateStatus(),
+		onStatus: (cb) => desk.onUpdateStatus(cb),
+		check: () => desk.checkForUpdates(),
+		download: () => desk.downloadUpdate(),
+		install: () => desk.installUpdate(),
+		setAutomatic: (on) => desk.setAutoUpdate(on),
+	},
 	about: async () => {
 		const a = await desk.about();
 		return [

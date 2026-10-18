@@ -21,6 +21,17 @@ export interface DesktopLogEntry {
 	path: string | null;
 }
 
+/** Where updating the app stands (the same shapes as the editor's UpdateState) */
+export type DesktopUpdateState =
+	| { state: 'idle' }
+	| { state: 'checking' }
+	| { state: 'current'; version: string }
+	| { state: 'available'; version: string; page?: string }
+	| { state: 'downloading'; version: string; percent: number }
+	| { state: 'ready'; version: string | null }
+	| { state: 'error'; message: string }
+	| { state: 'unsupported'; reason: string };
+
 export interface DesktopApi {
 	openFiles(): Promise<DesktopFile[]>;
 	/** Write to `path`; with no path, ask where. Resolves with the file written, or null when cancelled. */
@@ -53,6 +64,12 @@ export interface DesktopApi {
 	setMenuKeys(keys: Record<string, string | null>): void;
 	/** zoom the window's contents (1 = 100%) */
 	setZoom(factor: number): void;
+	updateStatus(): Promise<DesktopUpdateState>;
+	onUpdateStatus(cb: (s: DesktopUpdateState) => void): void;
+	checkForUpdates(): Promise<void>;
+	downloadUpdate(): void;
+	installUpdate(): void;
+	setAutoUpdate(on: boolean): void;
 	/** versions of what the app runs on, and where it keeps its settings */
 	about(): Promise<{ app: string; electron: string; chrome: string; node: string; platform: string; settings: string }>;
 	gameStatus(): Promise<DesktopGameStatus>;
