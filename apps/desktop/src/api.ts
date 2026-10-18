@@ -44,6 +44,8 @@ export interface DesktopApi {
 	setOpenFiles(paths: string[]): void;
 	watch(path: string): void;
 	onExternalChange(cb: (path: string, text: string) => void): void;
+	/** files opened from outside while Oxygen runs (Oxygen started again with them, or handed over by the OS) */
+	onOpenRequested(cb: (files: DesktopFile[]) => void): void;
 	onMenu(cb: (command: string) => void): void;
 	settings(): Promise<Record<string, unknown>>;
 	saveSettings(s: Record<string, unknown>): void;

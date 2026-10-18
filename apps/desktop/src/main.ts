@@ -47,6 +47,37 @@ function readDesktopFile(path: string): DesktopFile {
 	return { path, name: basename(path), text: readFileSync(path, 'utf8') };
 }
 
+/** Particle files named on a command line, resolved against the folder it ran in */
+function filesFromArgs(argv: string[], cwd: string): string[] {
+	return argv
+		.slice(app.isPackaged ? 1 : 2)
+		.filter((a) => a.endsWith('.json'))
+		.map((a) => resolve(cwd, a))
+		.filter((a) => existsSync(a));
+}
+
+// ---- files opened from outside while Oxygen runs (a file manager, the command line, a coding agent)
+/** files that arrived before the window asked for its start files */
+let queued: string[] = [];
+let rendererStarted = false;
+function openRequested(paths: string[]) {
+	if (!win) {
+		queued.push(...paths);
+		if (app.isReady()) createWindow();
+		return;
+	}
+	// a window still loading picks the files up with its start files, and shows itself when ready
+	if (!rendererStarted) {
+		queued.push(...paths);
+		return;
+	}
+	if (paths.length) win.webContents.send('openRequested', paths.map(readDesktopFile));
+	if (win.isMinimized()) win.restore();
+	win.show();
+	if (process.platform === 'darwin') app.focus({ steal: true });
+	else win.focus();
+}
+
 // ---- file watching: outside changes flow into the open document; our own saves are ignored
 const watchers = new Map<string, FSWatcher>();
 const lastText = new Map<string, string>();
@@ -247,10 +278,12 @@ function registerIpc() {
 			.map((f) => ({ name: f.replace('.particle.json', ''), text: readFileSync(join(dir, f), 'utf8') }));
 	});
 	ipcMain.handle('openedAtStart', () => {
-		const args = process.argv.slice(app.isPackaged ? 1 : 2).filter((a) => a.endsWith('.json') && existsSync(a));
+		rendererStarted = true;
+		const args = [...filesFromArgs(process.argv, process.cwd()), ...queued];
+		queued = [];
 		// what was open when Oxygen last closed (closed tabs stay closed)
 		const last = ((settings.openFiles as string[]) ?? []).filter((p) => existsSync(p));
-		return [...new Set([...args.map((a) => resolve(a)), ...last])].map(readDesktopFile);
+		return [...new Set([...args, ...last])].map(readDesktopFile);
 	});
 	ipcMain.on('watch', (_e, path: string) => {
 		watchFile(path);
@@ -318,6 +351,7 @@ function buildMenu() {
 }
 
 function createWindow() {
+	rendererStarted = false;
 	win = new BrowserWindow({
 		width: 1480,
 		height: 940,
@@ -339,20 +373,30 @@ function createWindow() {
 	win.on('closed', () => (win = null));
 }
 
-app.whenReady().then(() => {
-	loadSettings();
-	registerIpc();
-	buildMenu();
-	// a taken port moves on to the next free one; the Game menu shows which (or why none)
-	void connect.start().then(() => win?.webContents.send('gameStatus', gameStatus()));
-	setInterval(pollContentLog, 1500);
-	createWindow();
-	app.on('activate', () => {
-		if (BrowserWindow.getAllWindows().length === 0) createWindow();
+// one Oxygen at a time: started again (with files or not), it hands its command line to the running app and quits
+if (!app.requestSingleInstanceLock()) app.quit();
+else {
+	app.on('second-instance', (_e, argv, cwd) => openRequested(filesFromArgs(argv, cwd)));
+	// macOS hands files over by event (Finder, `open -a Oxygen file`), at launch before the app is ready too
+	app.on('open-file', (e, path) => {
+		e.preventDefault();
+		openRequested([path]);
 	});
-});
+	app.whenReady().then(() => {
+		loadSettings();
+		registerIpc();
+		buildMenu();
+		// a taken port moves on to the next free one; the Game menu shows which (or why none)
+		void connect.start().then(() => win?.webContents.send('gameStatus', gameStatus()));
+		setInterval(pollContentLog, 1500);
+		if (!win) createWindow();
+		app.on('activate', () => {
+			if (BrowserWindow.getAllWindows().length === 0) createWindow();
+		});
+	});
 
-app.on('window-all-closed', () => {
-	connect.stop();
-	if (process.platform !== 'darwin') app.quit();
-});
+	app.on('window-all-closed', () => {
+		connect.stop();
+		if (process.platform !== 'darwin') app.quit();
+	});
+}

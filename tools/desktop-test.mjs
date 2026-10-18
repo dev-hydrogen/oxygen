@@ -1,10 +1,14 @@
 // Launches the built Electron app and checks: window opens, files passed on the command line open,
-// outside edits to the file reach the open document, the game link menu is present.
+// outside edits to the file reach the open document, starting it again hands files to the running window,
+// the game link menu is present.
 //   node tools/desktop-test.mjs [--packaged apps/desktop/release/win-unpacked/Oxygen.exe]
 import { _electron as electron } from '@playwright/test';
+import { execFile } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { promisify } from 'node:util';
 
 delete process.env.ELECTRON_RUN_AS_NODE;
 const dir = mkdtempSync(join(tmpdir(), 'oxygen-desktop-'));
@@ -20,11 +24,12 @@ const check = (ok, what) => {
 const appDir = resolve('apps/desktop');
 // the packaged app (electron-builder output) instead of the development build
 const packaged = process.argv.includes('--packaged') ? resolve(process.argv[process.argv.indexOf('--packaged') + 1]) : null;
+const env = { ...process.env, ELECTRON_ENABLE_LOGGING: '0', OXYGEN_USER_DATA: join(dir, 'profile') };
 const launch = (files) =>
 	electron.launch({
 		...(packaged ? { executablePath: packaged, args: files } : { args: [appDir, ...files] }),
 		cwd: appDir,
-		env: { ...process.env, ELECTRON_ENABLE_LOGGING: '0', OXYGEN_USER_DATA: join(dir, 'profile') },
+		env,
 	});
 if (packaged) console.log(`info testing ${packaged}`);
 const app = await launch([file]);
@@ -42,6 +47,19 @@ const after = await page.evaluate(() => window.oxygen.active.doc.get('particle_e
 check(before === 10 && after === 77, `editing the file on disk updates the open document (${before} → ${after})`);
 const dirty = await page.evaluate(() => window.oxygen.active.dirty);
 check(dirty === false, 'a file changed on disk without local edits stays clean');
+
+// started again with another file while it runs, Oxygen hands the file to the open window and quits
+const second = join(dir, 'second.particle.json');
+writeFileSync(second, readFileSync(file, 'utf8').replace(/"identifier":\s*"[^"]+"/, '"identifier": "test:second"'));
+const binary = packaged ?? createRequire(join(appDir, 'package.json'))('electron');
+const handedOver = await promisify(execFile)(binary, packaged ? [second] : [appDir, second], { cwd: appDir, env, timeout: 20000 }).then(
+	() => true,
+	() => false,
+);
+await page.waitForFunction(() => window.oxygen?.active?.file.name === 'second.particle.json', null, { timeout: 10000 }).catch(() => {});
+const tabs = await page.evaluate(() => window.oxygen.sessions.map((s) => s.file.name));
+check(handedOver && tabs.length === 2 && tabs.includes('second.particle.json'), `starting Oxygen again with a file opens it in the running window (${tabs.join(', ')})`);
+await page.evaluate(() => window.oxygen.close(window.oxygen.active.id));
 
 await page.waitForTimeout(800);
 await page.screenshot({ path: 'test-results/ui/desktop.png' });

@@ -23,6 +23,7 @@ const api: DesktopApi = {
 	setOpenFiles: (paths) => ipcRenderer.send('openSet', paths),
 	watch: (path) => ipcRenderer.send('watch', path),
 	onExternalChange: (cb) => on('externalChange', cb),
+	onOpenRequested: (cb) => on('openRequested', cb),
 	onMenu: (cb) => on('menu', cb),
 	settings: () => ipcRenderer.invoke('settings'),
 	saveSettings: (s) => ipcRenderer.send('saveSettings', s),

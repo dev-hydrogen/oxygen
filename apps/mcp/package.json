@@ -1,0 +1,40 @@
+{
+	"name": "@oxygen/mcp",
+	"version": "0.1.1",
+	"private": true,
+	"type": "module",
+	"description": "Oxygen for coding agents: an MCP server that creates, edits, checks, simulates and renders Bedrock particle effects",
+	"license": "GPL-3.0-or-later",
+	"bin": {
+		"oxygen-mcp": "./dist/server.cjs"
+	},
+	"scripts": {
+		"build": "node build.mjs",
+		"start": "node dist/server.cjs",
+		"typecheck": "tsc --noEmit -p . && svelte-check --tsconfig ./preview/tsconfig.json"
+	},
+	"dependencies": {
+		"playwright": "1.64.1"
+	},
+	"devDependencies": {
+		"@modelcontextprotocol/sdk": "^1.32.1",
+		"@oxygen/effect": "workspace:*",
+		"@oxygen/format": "workspace:*",
+		"@oxygen/lang": "workspace:*",
+		"@oxygen/metadata": "workspace:*",
+		"@oxygen/ui": "workspace:*",
+		"@sveltejs/vite-plugin-svelte": "^7.3.1",
+		"@types/three": "^0.186.0",
+		"@types/node": "^24.0.0",
+		"esbuild": "^0.28.2",
+		"jsonc-parser": "^3.3.1",
+		"molangjs": "workspace:*",
+		"svelte": "^5.57.2",
+		"svelte-check": "^4.7.7",
+		"three": "^0.186.1",
+		"typescript": "6.0.3",
+		"vite": "^8.3.4",
+		"wintersky": "workspace:*",
+		"zod": "^4.0.0"
+	}
+}

@@ -26,9 +26,15 @@ The particle engine and the Molang compiler are Git submodules in `vendor/`. If 
 | Desktop app, from source | `pnpm desktop` | the app in a window |
 | Desktop installer | `pnpm package:desktop` | `apps/desktop/release/` (Windows installer; dmg and AppImage are set up) |
 | VS Code extension | `pnpm package:vscode` | `apps/vscode/oxygen-particle-editor-<version>.vsix` |
+| MCP server for coding agents | `pnpm --filter @oxygen/mcp build` | `apps/mcp/dist/server.cjs` ([setup](agents.md)) |
 
 To try a `.vsix`, install it in VS Code with *Extensions: Install from VSIX…*, or run
 `code --install-extension apps/vscode/oxygen-particle-editor-<version>.vsix`.
+
+`pnpm desktop` downloads Electron into its cache on the first run. Where that cache can't be written (a read-only
+`~/Library/Caches/electron`, for instance), point it elsewhere: `electron_config_cache=/tmp/electron-cache pnpm desktop`.
+Oxygen runs one window at a time: starting it again with a file, as `open_in_editor` does for agents, opens the
+file in the window already running.
 
 ## Tests
 
@@ -50,6 +56,7 @@ The VS Code and desktop tests can also run against packaged builds:
 | Path | What's there |
 | --- | --- |
 | `apps/web`, `apps/vscode`, `apps/desktop` | The three apps |
+| `apps/mcp` | The MCP server for coding agents, and the headless preview page it renders with |
 | `packages/ui` | The editor itself: panels, fields and the viewport (Svelte 5) |
 | `packages/format` | Reading and editing particle JSON without disturbing its formatting |
 | `packages/lang` | The Molang editor: completion, problems, fixes and refactors |

@@ -26,8 +26,9 @@ jobs:
         run: pnpm test
       - name: Type checks
         run: pnpm typecheck
-      - name: Build the web app, the VS Code extension and the desktop app
+      - name: Build the web app, the VS Code extension, the desktop app and the MCP server
         run: |
           pnpm --filter @oxygen/web build
           pnpm --filter oxygen-particle-editor build
           pnpm --filter @oxygen/desktop build
+          pnpm --filter @oxygen/mcp build

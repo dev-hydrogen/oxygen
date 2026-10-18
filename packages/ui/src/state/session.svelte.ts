@@ -861,7 +861,8 @@ export class EffectSession {
 		return undefined;
 	}
 
-	private refreshStats() {
+	/** Recount the preview stats and the runtime problems (playback does this a few times a second) */
+	refreshStats(): void {
 		const cap = this.capFor(this.spawnMode);
 		let capHit = false;
 		for (const e of this.world.emitters) if (e.pool.count >= e.cap) capHit = true;

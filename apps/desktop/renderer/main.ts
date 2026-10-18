@@ -1,5 +1,5 @@
 import { mountOxygen, type FileRef, type Host } from '@oxygen/ui';
-import type { DesktopApi } from '../src/api';
+import type { DesktopApi, DesktopFile } from '../src/api';
 
 /** Oxygen in Electron: native files, pack folders, outside-change sync and the game link */
 const desk = (window as unknown as { oxygenDesktop: DesktopApi }).oxygenDesktop;
@@ -97,10 +97,13 @@ desk.onMenu((cmd) => {
 	else if (cmd === 'openPack') void w.openPack();
 });
 
-// reopen what was open last time (or files passed on the command line); otherwise the start screen
-void desk.openedAtStart().then((files) => {
+// reopen what was open last time (or files passed on the command line); otherwise the start screen. Files opened
+// from outside later arrive the same way; one already open gets its tab focused.
+const openAll = (files: DesktopFile[]) => {
 	for (const f of files) {
 		desk.watch(f.path);
 		w.open({ file: { name: f.name, id: f.path }, text: f.text });
 	}
-});
+};
+desk.onOpenRequested(openAll);
+void desk.openedAtStart().then(openAll);

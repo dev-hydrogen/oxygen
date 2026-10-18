@@ -1,0 +1,10 @@
+{
+	"extends": "../../../tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"types": ["vite/client", "svelte"],
+		"lib": ["ES2024", "DOM", "DOM.Iterable"],
+		"allowImportingTsExtensions": true
+	},
+	"include": [".", "../src/protocol.ts"]
+}

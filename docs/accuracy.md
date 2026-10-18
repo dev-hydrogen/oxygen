@@ -47,6 +47,12 @@ with a counter: each particle takes the next number and places itself by it. Sno
 update before moving any of them, so every particle ends up with the last particle's number and they all stack
 on one spot.
 
+Variables belong to the emitter, not to each particle. By the time render expressions run, a value set in the
+update holds whatever the last particle left there (Oxygen flags reads like that). Size, colour or UV that depend
+on something per particle need it again in the render pass: worked out from `v.particle_random_1`–`4` and
+`v.particle_age`, which are each particle's own, or from a second counter in the render expression that the
+emitter's update resets, as several examples do.
+
 The Inspector's Phases view and the Expression panel's "whole effect" view show this order for your effect.
 
 ## Events

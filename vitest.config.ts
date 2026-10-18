@@ -6,6 +6,7 @@ export default defineConfig({
 			'vendor/molangjs/test/**/*.test.ts',
 			'vendor/wintersky/test/**/*.test.ts',
 			'packages/*/test/**/*.test.ts',
+			'apps/mcp/test/**/*.test.ts',
 		],
 		environment: 'node',
 	},

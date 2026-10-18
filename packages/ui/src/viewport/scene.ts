@@ -269,7 +269,11 @@ export class ViewportScene {
 		this.controls.lookAtTarget();
 	}
 
-	private frame(dt: number): void {
+	/**
+	 * Advance the session by `dt` and draw. The animation loop calls this; headless renderers drive it directly,
+	 * with `draw` off for frames nobody looks at.
+	 */
+	frame(dt: number, draw = true): void {
 		this.fly(dt);
 		this.controls.update();
 		this.controls.updateMarker(this.canvas.clientHeight);
@@ -278,8 +282,9 @@ export class ViewportScene {
 		if (s) {
 			this.syncWorldCamera(s);
 			s.tick(dt);
-			this.updateHelpers(s);
 		}
+		if (!draw) return;
+		if (s) this.updateHelpers(s);
 		this.grid.visible = this.showGrid;
 		this.ground.mesh.visible = this.gizmos.ground;
 		if (this.scaleBlock) this.scaleBlock.visible = this.gizmos.block;

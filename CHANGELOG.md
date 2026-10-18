@@ -5,8 +5,19 @@
 ### Added
 
 - The web app is online at [oxygen.hydrogen.exposed](https://oxygen.hydrogen.exposed).
+- An MCP server for coding agents (`apps/mcp`): agents can look up the particle format and the game's measured
+  behaviour, create effects from the starting effect or an example, edit them by JSON path without disturbing
+  formatting or rewrite them whole, check them, simulate them and render previews with Oxygen's viewport, with
+  other effects playing alongside, and open them in the desktop app for you. See
+  [Oxygen for coding agents](https://github.com/dev-hydrogen/oxygen/blob/main/docs/agents.md).
+- The desktop app keeps one window: opening a file while it runs (from the command line, a file manager or an
+  agent) opens it there, or brings its tab forward.
 
 ### Fixed
+
+- A paused preview drew effects that count particles in their render expression (spiral galaxy, aurora,
+  lightning, magic circle and others) wrong: every redraw advanced the count, so colours and sizes drifted.
+  Redrawing a paused frame, or one scrubbed to, now shows it as it played.
 
 ## Oxygen 0.1.0
 
