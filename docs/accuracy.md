@@ -81,11 +81,28 @@ The Inspector's Phases view and the Expression panel's "whole effect" view show 
 
 ## Vibrant Visuals
 
-Oxygen's Vibrant Visuals preview was matched to screenshots of the game at four times of day.
+Oxygen's Vibrant Visuals preview was matched to screenshots of the game at four times of day, and to recordings of
+emissive particles at night.
 
 - Lit and unlit particles look the same: both take the world's light, mostly from the sky.
 - Only a texture set's glow (emissive) makes a particle shine at night. The Vibrant Visuals panel can make one
   for you.
+- **A texture set belongs to the texture.** Every effect with that texture glows, child effects included.
+- **Emissive light is very strong.** At night an emissive of 255 is about 40 times a white surface in the
+  moonlight. It grows evenly with the emissive value and is weighted by alpha like any other light, but because
+  it's so strong, a translucent texel already shows almost fully bright at a few percent alpha. Soft alpha
+  edges therefore turn into the texture's hard pixel steps, and a soft glow texture becomes an opaque blob.
+  For soft translucent glows keep emissive low (around 8 to 24 of 255); for strong glows, an emissive cutout
+  (`particles_alpha`) with a clear pixel-art outline looks clean and blooms.
+- **Auto exposure follows what's on screen.** Something emissive in view at night darkens everything else within
+  half a second: an emissive area of 1 % of the screen took exposure to about a quarter, 8 % or more to the
+  floor of about a sixth. When it goes, exposure holds for about a second and recovers over about three.
+  Oxygen does the same while playing; still pictures from the MCP tools use the settled exposure of the moment.
+- Bloom is a tight halo, fading within about a fifth of a glowing area's width.
+- **Colours keep their hue as they get brighter.** Vanilla grades the picture (contrast 1.15, saturation 1.05) and
+  tone maps with its 'generic' curve, which works on each colour's brightest channel: an over-bright pink glow
+  stays pink and only its core turns pale, where a per-channel curve washes it out to white. Oxygen reads a pack's
+  own `color_grading/color_grading.json` (midtones, tone mapper, gamma) and uses vanilla's without one.
 - Additive particles come out brighter than others of the same colour.
 - A resource pack has to opt in (`"capabilities": ["pbr"]` in its manifest), or the game turns Vibrant Visuals
   off while the pack is active.

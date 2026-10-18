@@ -119,13 +119,13 @@ describe('entity stand-in', () => {
 });
 
 describe('vibrant visuals model', () => {
-	it('reads pack lighting with documented defaults and samples keyframes from noon', async () => {
+	it('reads pack lighting with vanilla defaults and samples keyframes from noon', async () => {
 		const { parseLighting, sample, lightAt, DEFAULT_LIGHTING, parseTextureSet, writeTextureSet, generateMers } = await import('../src/vv');
 		const m = parseLighting({ format_version: '1.21.40', 'minecraft:lighting_settings': { directional_lights: { orbital: { sun: { illuminance: 50000 } } } } });
 		expect(m.sunIlluminance).toBe(50000);
 		expect(m.moonIlluminance).toBe(DEFAULT_LIGHTING.moonIlluminance);
-		expect(sample(DEFAULT_LIGHTING.sunIlluminance, 0)).toBeCloseTo(109880);
-		expect(sample(DEFAULT_LIGHTING.sunIlluminance, 0.5)).toBeCloseTo(1);
+		expect(sample(DEFAULT_LIGHTING.sunIlluminance, 0)).toBeCloseTo(100);
+		expect(sample(DEFAULT_LIGHTING.sunIlluminance, 0.5)).toBeCloseTo(0);
 		const noon = lightAt(DEFAULT_LIGHTING, 0.5);
 		const midnight = lightAt(DEFAULT_LIGHTING, 0);
 		expect(noon.direction[1]).toBeGreaterThan(0.9);
@@ -147,7 +147,7 @@ describe('measured Vibrant Visuals particle light (t65)', () => {
 		const late = measuredParticleLight(0.875);
 		expect(late.emissive).toBeCloseTo((MEASURED_PARTICLE_LIGHT['0.75'].emissive + MEASURED_PARTICLE_LIGHT['0'].emissive) / 2, 6);
 		// noon is blue: the sky lights particles that face the camera
-		expect(MEASURED_PARTICLE_LIGHT['0.5'].light[2]).toBeGreaterThan(MEASURED_PARTICLE_LIGHT['0.5'].light[0] * 3);
+		expect(MEASURED_PARTICLE_LIGHT['0.5'].light[2]).toBeGreaterThan(MEASURED_PARTICLE_LIGHT['0.5'].light[0] * 2);
 	});
 
 	it("scales by a pack's own lighting relative to the default", async () => {
@@ -158,5 +158,67 @@ describe('measured Vibrant Visuals particle light (t65)', () => {
 		const m = measuredParticleLight(0.5);
 		expect(p.light[0] / m.light[0]).toBeGreaterThan(p.light[2] / m.light[2]);
 		expect(particleLight(warm, 0.5, false)).toEqual(m);
+	});
+});
+
+describe('Vibrant Visuals tone curve and auto exposure (measured in-game)', () => {
+	it('the generic curve maps mid grey to 0.267 and reaches white at hdrMax', async () => {
+		const { genericTone, GENERIC_TONE } = await import('../src/vv');
+		expect(genericTone(GENERIC_TONE.midIn)).toBeCloseTo(GENERIC_TONE.midOut, 6);
+		expect(genericTone(GENERIC_TONE.hdrMax)).toBeCloseTo(1, 6);
+		expect(genericTone(0)).toBe(0);
+		let last = 0;
+		for (const x of [0.001, 0.01, 0.1, 1, 4, 16, 63]) {
+			expect(genericTone(x)).toBeGreaterThan(last);
+			last = genericTone(x);
+		}
+	});
+
+	it('meters bright pixels with a soft knee', async () => {
+		const { meterWeight, AUTO_EXPOSURE } = await import('../src/vv');
+		expect(meterWeight(1)).toBeCloseTo(1, 2);
+		expect(meterWeight(AUTO_EXPOSURE.knee)).toBeCloseTo(AUTO_EXPOSURE.knee / 2, 6);
+		expect(meterWeight(1e9)).toBeLessThan(AUTO_EXPOSURE.knee);
+	});
+
+	it('darkens fast, recovers slowly and never goes below the floor', async () => {
+		const { AutoExposure, AUTO_EXPOSURE, exposureFor } = await import('../src/vv');
+		const eye = new AutoExposure();
+		expect(eye.exposure).toBe(1);
+		// an emissive wall covering 8 % of the screen at night (the in-game measurement): the floor within a second
+		const wall = 1 + 0.08 * 690;
+		for (let t = 0; t < 1; t += 1 / 60) eye.step(wall, 1 / 60);
+		expect(eye.exposure).toBeCloseTo(AUTO_EXPOSURE.floor, 6);
+		// gone: still dark a second later (the meter's average has to fall back first), back within 8 s
+		for (let t = 0; t < 1; t += 1 / 60) eye.step(1, 1 / 60);
+		expect(eye.exposure).toBeLessThan(0.35);
+		for (let t = 0; t < 7; t += 1 / 60) eye.step(1, 1 / 60);
+		expect(eye.exposure).toBeGreaterThan(0.95);
+		// settling jumps straight to what a frame meters
+		expect(eye.settle(wall)).toBe(exposureFor(wall));
+		eye.reset();
+		expect(eye.exposure).toBe(1);
+	});
+
+	it('defaults to the generic tone curve', async () => {
+		const { DEFAULT_GRADING, parseGrading } = await import('../src/vv');
+		expect(DEFAULT_GRADING.toneMapper).toBe('generic');
+		expect(parseGrading({}).toneMapper).toBe('generic');
+		expect(parseGrading({ 'minecraft:color_grading_settings': { tone_mapping: { operator: 'aces' } } }).toneMapper).toBe('aces');
+	});
+});
+
+describe('Vibrant Visuals display transform (vanilla color grading)', () => {
+	it('reads a pack grade and keeps hues of bright colours with the generic tone mapper', async () => {
+		const { DEFAULT_GRADING, displayTransform, parseGrading } = await import('../src/vv');
+		const g = parseGrading({ 'minecraft:color_grading_settings': { color_grading: { midtones: { contrast: [1.3, 1.3, 1.3], saturation: 1.2 } }, tone_mapping: { operator: 'reinhard_luminance' } } });
+		expect(g.contrast).toEqual([1.3, 1.3, 1.3]);
+		expect(g.saturation).toEqual([1.2, 1.2, 1.2]);
+		expect(g.gamma).toBe(2.2);
+		// a bright pink stays pink (the in-game glow keeps its tint), black stays black
+		const pink = displayTransform([20, 20 * 0.268, 20 * 0.7], DEFAULT_GRADING);
+		expect(pink[0]).toBeGreaterThan(0.95);
+		expect(pink[1]).toBeLessThan(0.85);
+		expect(displayTransform([0, 0, 0], DEFAULT_GRADING)).toEqual([0, 0, 0]);
 	});
 });

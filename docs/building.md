@@ -138,3 +138,5 @@ uploads it. A plain `vite build` is unaffected and still produces `apps/web/dist
 - `tools/ui-shot.mjs` screenshots the web app after scripted steps, and `tools/png-sample.mjs` reads colours out
   of screenshots.
 - `tools/vv-calibrate.mjs` and `tools/vv-fit.py` fit the Vibrant Visuals preview to in-game measurements.
+- `tools/vv-probe-calibrate.mjs` renders any effect from a pack in the Vibrant Visuals preview with an in-game
+  camera, to compare with a capture from the game pixel for pixel (emissive strength, bloom, auto exposure).

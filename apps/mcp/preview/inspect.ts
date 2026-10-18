@@ -507,6 +507,8 @@ async function gif(session: EffectSession, scene: ViewportScene, canvas: HTMLCan
 	}
 	scene.setView({ position: view.position, target: view.target, fov: view.fov ?? 70 });
 	scene.renderMode = q.mode;
+	// an animation adapts like the game: from the settled scene, over the time between frames
+	scene.vvExposure = 'adapt';
 	scene.gizmos = { ...scene.gizmos, ground: q.ground, block: q.ground, emitter: q.gizmos, children: q.gizmos, killPlane: q.gizmos };
 	session.showShape = q.gizmos;
 
@@ -519,6 +521,7 @@ async function gif(session: EffectSession, scene: ViewportScene, canvas: HTMLCan
 	const frames: Rgba[] = [];
 	const times: number[] = [];
 	clock.restart();
+	scene.resetExposure();
 	for (const f of captures) {
 		clock.run(f - clock.frame);
 		session.playing = false;

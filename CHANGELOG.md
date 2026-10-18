@@ -16,8 +16,22 @@
   analysis, animated GIFs, and a link to Minecraft itself (deploy, spawn, commands, content log).
 - The desktop app keeps one window: opening a file while it runs (from the command line, a file manager or an
   agent) opens it there, or brings its tab forward.
+- Vibrant Visuals preview: auto exposure, measured in-game. Something emissive in view at night darkens the rest
+  within half a second and lets go over a few seconds, as in the game. Still pictures from the MCP tools use the
+  settled exposure; GIFs adapt over their frames.
 
 ### Fixed
+
+- Vibrant Visuals preview: texture sets now belong to their texture, as in the game. Child effects and other
+  effects in the scene glowed only if they used the open effect's texture (and then with its texture set).
+- Vibrant Visuals preview: emissive particles now look as in the game, refitted to recordings of emissive alpha
+  ramps and tinted glows at night. Glow is much stronger (translucent glowing particles blow out to hard pixel
+  edges, like in-game) but keeps its colour instead of washing out to white, bloom is a tight halo instead of a wide
+  haze, and additive particles are lit a little brighter.
+- Vibrant Visuals preview: the picture now goes through the game's display pipeline: the pack's color grading
+  (vanilla's when it has none: contrast 1.15, saturation 1.05), its tone mapper ('generic' by default, measured
+  in-game, instead of ACES; 'reinhard_luminance' and 'reinhard_luma' now keep hues) and its gamma. Without a pack's
+  lighting, vanilla's lighting/global.json is the reference (emissive desaturation 0, not 0.1).
 
 - A paused preview drew effects that count particles in their render expression (spiral galaxy, aurora,
   lightning, magic circle and others) wrong: every redraw advanced the count, so colours and sizes drifted.

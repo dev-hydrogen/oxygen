@@ -53,15 +53,51 @@ def neutral(c):
     g = 1 - 1 / (desat * (peak - new) + 1)
     return [v + (new - v) * g for v in c]
 
+def generic(c):
+    # Bedrock's 'generic' operator as Lottes' curve (contrast 1, shoulder 0.95, hdrMax 64, mid 0.18 -> 0.267),
+    # fitted to emissive alpha ramps in-game (tools/vv-probe-calibrate.mjs)
+    a, d, hm, mi, mo = 1.0, 0.95, 64.0, 0.18, 0.267
+    b = (-mi ** a + hm ** a * mo) / ((hm ** (a * d) - mi ** (a * d)) * mo)
+    k = (hm ** (a * d) * mi ** a - hm ** a * mi ** (a * d) * mo) / ((hm ** (a * d) - mi ** (a * d)) * mo)
+    return [min(max(x, 0) ** a / (max(x, 0) ** (a * d) * b + k), 1) for x in c]
+
+# vanilla's Vibrant Visuals display pipeline, as packages/scene/src/vv.ts displayTransform runs it: midtones grade
+# (saturation 1.05, contrast 1.15 around 0.18), the generic curve on the brightest channel (hue kept, whitening near the top), then a
+# 2.2 gamma encode
+GEN = dict(a=0.81, d=0.977, h=201.7, mi=0.18, mo=0.267, whitening=24)
+
+def _gen_curve():
+    a, d, h, mi, mo = GEN['a'], GEN['d'], GEN['h'], GEN['mi'], GEN['mo']
+    span = (h ** (a * d) - mi ** (a * d)) * mo
+    b = (-mi ** a + h ** a * mo) / span
+    k = (h ** (a * d) * mi ** a - h ** a * mi ** (a * d) * mo) / span
+    return lambda x: min(max(x, 0) ** a / (max(x, 0) ** (a * d) * b + k), 1)
+
+def vanilla(c):
+    f = _gen_curve()
+    l = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    c = [l + (v - l) * 1.05 for v in c]
+    c = [0.18 * (max(v, 0) / 0.18) ** 1.15 for v in c]
+    m = max(c)
+    if m <= 1e-9:
+        return [0, 0, 0]
+    t = f(m)
+    w = t ** GEN['whitening']
+    return [max(0, v) * t / m + (t - max(0, v) * t / m) * w for v in c]
+
 def linear(c):
     return [min(max(x, 0), 1) for x in c]
 
-TONES = {'aces': aces, 'reinhard': reinhard, 'cineon': cineon, 'neutral': neutral, 'none': linear}
+TONES = {'aces': aces, 'reinhard': reinhard, 'cineon': cineon, 'neutral': neutral, 'generic': generic, 'vanilla': vanilla, 'none': linear}
 ALB = {'v8': 64, 'v1': 128, 'v7': 255}
 
 def render(tone, L, H, albedo, emissive=0.0, E=0.0):
     # light and haze can't be negative
     L, H = [abs(x) for x in L], [abs(x) for x in H]
+    if tone is vanilla:
+        # Oxygen's shader decodes textures with a 2.2 power, and the game encodes with its grading's gamma 2.2
+        a = (albedo / 255) ** 2.2
+        return [255 * min(max(v, 0), 1) ** (1 / 2.2) for v in tone([a * L[i] + H[i] + a * emissive * E for i in range(3)])]
     a = s2l(albedo)
     return [l2s(v) for v in tone([a * L[i] + H[i] + a * emissive * E for i in range(3)])]
 
@@ -103,7 +139,9 @@ def nelder_mead(f, x0, step=0.3, iters=4000):
 
 import sys
 if '--times' in sys.argv:
-    # one fit per measured time of day (ACES, as Oxygen uses by default)
+    # one fit per measured time of day, through the default tone mapper (--tone to pick another)
+    tone_name = sys.argv[sys.argv.index('--tone') + 1] if '--tone' in sys.argv else 'vanilla'
+    aces = TONES[tone_name]
     allt = json.load(open('packages/testpack/fixtures/ingame-1.26.52.json', encoding='utf8'))['results']['t65']['vvByTime']
     out = {}
     for tod, data in sorted(allt.items(), key=lambda kv: float(kv[0])):

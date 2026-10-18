@@ -120,6 +120,11 @@ make a particle glow there, choose what glows: nothing, the whole particle, or j
 the result in the viewport straight away. *Save to pack* writes the texture set (and the glow map, for bright
 parts) next to the texture.
 
+Glow in the game is much stronger than its slider suggests. A soft, translucent particle with full glow turns
+into a solid, hard-edged blob, because even its faint edges shine at full strength. Keep the glow low (around 8
+to 24 of 255) on soft textures, and save full glow for cutout textures with a clear outline. The preview also
+copies the game's auto exposure: something glowing in view at night darkens everything else for a few seconds.
+
 ## The scene
 
 The Scene panel sets up the world around the effect: the ground and its height, blocks to collide with (paint

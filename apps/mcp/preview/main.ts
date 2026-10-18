@@ -91,6 +91,8 @@ async function run(req: RunRequest): Promise<RunResult> {
 	const { scene, canvas } = openScene(opened, width, height);
 	if (r) {
 		scene.renderMode = r.mode;
+		// pictures of single moments: exposure settled for what each one shows (the game's adapts over time)
+		scene.vvExposure = 'settled';
 		scene.gizmos = { ...DEFAULT_GIZMOS, ground: r.ground, block: r.ground, emitter: r.gizmos, children: r.gizmos, killPlane: r.gizmos };
 		session.showShape = r.gizmos;
 	}

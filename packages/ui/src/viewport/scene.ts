@@ -4,7 +4,8 @@ import type { EffectSession } from '../state/session.svelte';
 import { GroundGrid } from './grid';
 import { sampleTrajectories } from '../lib/sampler';
 import { SceneObjects } from './sceneObjects';
-import { VibrantPipeline } from './vibrant';
+import { VibrantPipeline, type ExposureMode } from './vibrant';
+import { AUTO_EXPOSURE } from '@oxygen/scene';
 import { EmitterMarkers, FacingOverlay, ShapeGizmo, VelocityOverlay } from './overlays';
 import { CameraRig } from './camera';
 import { DEFAULT_GIZMOS, type GizmoHit, type Gizmos } from './gizmos';
@@ -43,6 +44,23 @@ export class ViewportScene {
 	renderMode: 'classic' | 'vv' | 'split' = 'classic';
 	/** Vibrant Visuals draws the game's sky behind particles; off keeps the classic backdrop, to compare just the particles */
 	vvSky = true;
+	/** Vibrant Visuals auto exposure: adapt over time like the game, settle at once (single pictures), or off */
+	get vvExposure(): ExposureMode {
+		return this.vibrant.exposureMode;
+	}
+	set vvExposure(mode: ExposureMode) {
+		this.vibrant.exposureMode = mode;
+	}
+	/** Vibrant Visuals exposure of the last frame, relative to the scene with nothing bright in view */
+	get vvExposureValue(): number {
+		return this.vibrant.exposure;
+	}
+	/** Start auto exposure over from the settled scene's */
+	resetExposure(): void {
+		this.vibrant.resetExposure();
+	}
+	/** time advanced since the last Vibrant Visuals frame was drawn, for auto exposure */
+	private vvElapsed = 0;
 	private pathsKey = '';
 	private pathsTimer: ReturnType<typeof setTimeout> | null = null;
 	private raf = 0;
@@ -274,6 +292,7 @@ export class ViewportScene {
 	 * with `draw` off for frames nobody looks at.
 	 */
 	frame(dt: number, draw = true): void {
+		this.vvElapsed += dt;
 		this.fly(dt);
 		this.controls.update();
 		this.controls.updateMarker(this.canvas.clientHeight);
@@ -318,15 +337,22 @@ export class ViewportScene {
 			this.particles.vibrant = VibrantPipeline.settings(s!.vvLighting, s!.timeOfDay, s!.vvFromPack.lighting);
 			// the measured sky, so blended and additive particles sit on what the game shows behind them; or the
 			// classic backdrop, run backwards through the tone mapper so it comes out the same
-			this.scene.background = this.vvSky ? VibrantPipeline.sky(s!.timeOfDay) : VibrantPipeline.backdrop(s!.vvGrading.toneMapper, BACKDROP);
+			this.scene.background = this.vvSky ? VibrantPipeline.sky(s!.timeOfDay, s!.vvGrading) : VibrantPipeline.backdrop(s!.vvGrading, BACKDROP);
 			this.particles.syncEmitters(all(), this.camera);
 		};
+		// auto exposure meters against the game's scene at this time of day
+		const reference = () => {
+			const sky = VibrantPipeline.sky(s!.timeOfDay, s!.vvGrading);
+			return (0.2126 * sky.r + 0.7152 * sky.g + 0.0722 * sky.b) * AUTO_EXPOSURE.reference;
+		};
+		const elapsed = this.vvElapsed;
+		if (mode !== 'classic') this.vvElapsed = 0;
 		if (mode === 'classic') {
 			classic();
 			r.render(this.scene, this.camera);
 		} else if (mode === 'vv') {
 			vibrant();
-			this.vibrant.render(s!.vvGrading);
+			this.vibrant.render(s!.vvGrading, undefined, elapsed, reference());
 		} else {
 			// split: classic on the left half, Vibrant Visuals on the right, same camera
 			const half = Math.floor(w / 2);
@@ -338,7 +364,7 @@ export class ViewportScene {
 			this.camera.updateProjectionMatrix();
 			r.render(this.scene, this.camera);
 			vibrant();
-			this.vibrant.render(s!.vvGrading, { x: half, y: 0, w: w - half, h });
+			this.vibrant.render(s!.vvGrading, { x: half, y: 0, w: w - half, h }, elapsed, reference());
 			r.setScissorTest(false);
 			r.setViewport(0, 0, w, h);
 			this.camera.aspect = w / h;
