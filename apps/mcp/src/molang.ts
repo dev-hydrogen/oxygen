@@ -80,9 +80,9 @@ function simplify(n: Node): unknown {
 
 /**
  * Evaluate an expression with the game's rules (32-bit floats, degrees, unset reads abort it, `??`, loops) and values
- * given by name: variables, temps and queries (by name or exact call signature, e.g. `query.position(1)`)
+ * given by name: variables, temps, context values and queries (by name or exact call signature, e.g. `query.position(1)`)
  */
-export function evaluateStandalone(o: { expression: string; variables?: Record<string, Value>; temps?: Record<string, Value>; queries?: Record<string, Value>; engine?: string | number[] | null; seed?: number }): Record<string, unknown> {
+export function evaluateStandalone(o: { expression: string; variables?: Record<string, Value>; temps?: Record<string, Value>; contexts?: Record<string, Value>; queries?: Record<string, Value>; engine?: string | number[] | null; seed?: number }): Record<string, unknown> {
 	const symbols = new SymbolTable();
 	const expr = compile(o.expression, { symbols, engine: o.engine ?? null, mode: 'trace', context: 'particle', comments: true });
 	const diagnostics = expr.diagnostics.map((d) => ({ severity: d.severity, code: d.code, message: d.message, text: o.expression.slice(d.start, d.end) }));
@@ -95,6 +95,8 @@ export function evaluateStandalone(o: { expression: string; variables?: Record<s
 	for (const [k, x] of Object.entries(o.variables ?? {})) v[symbols.variable(canon(k, 'variable', 'v'))] = x;
 	const t = new TempScope();
 	for (const [k, x] of Object.entries(o.temps ?? {})) t.set(symbols.temp(canon(k, 'temp', 't')), x);
+	const c: Value[] = [];
+	for (const [k, x] of Object.entries(o.contexts ?? {})) c[symbols.context(canon(k, 'context', 'c'))] = x;
 	const queries = new Map(Object.entries(o.queries ?? {}).map(([k, x]) => [canon(k, 'query', 'q').replace(/\s+/g, ''), x]));
 	const unanswered = new Set<string>();
 	const errors: string[] = [];
@@ -102,6 +104,7 @@ export function evaluateStandalone(o: { expression: string; variables?: Record<s
 	const env = createEnv({
 		v,
 		t,
+		c,
 		unsetMode: 'abort',
 		// the engine's random sequence (mulberry32)
 		rnd: () => {
@@ -146,7 +149,7 @@ export function evaluateStandalone(o: { expression: string; variables?: Record<s
 	return {
 		value: val(value),
 		aborted,
-		...(aborted ? { note: 'An unset variable or temp was read, so the game stops the whole expression: it evaluates to 0.' } : {}),
+		...(aborted ? { note: 'An unset variable, temp or context value was read, so the game stops the whole expression: it evaluates to 0.' } : {}),
 		...(expr.complex && !aborted && !/\breturn\b/.test(o.expression) ? { note: "Statements without a 'return' evaluate to 0, like in the game." } : {}),
 		diagnostics,
 		parts: annotate(expr.program, values),

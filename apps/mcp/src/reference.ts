@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CATEGORIES, COMPONENT_BY_ID, COMPONENTS, MATERIALS, PHASES, type FieldKind } from '@oxygen/format';
 import { getQuery, molangMetadata } from '@oxygen/metadata';
-import { TESTS } from '@oxygen/testpack';
+import { ENTITY_TESTS, TESTS } from '@oxygen/testpack';
 import measured from '../../../packages/testpack/fixtures/ingame-1.26.52.json';
 import { BUNDLED } from './pack';
 
@@ -59,8 +59,8 @@ const USAGE = [
 function measurements(search: string | null): string {
 	const results = (measured as { results: Record<string, { conclusion?: string }> }).results;
 	const s = search?.toLowerCase() ?? '';
-	const lines = [`Measured in Minecraft ${measured.game} (${measured.date}); Oxygen's engine reproduces every result. What the content log reports at load:`, ...measured.loadLog.map((l: string) => `- ${l}`)];
-	for (const t of TESTS) {
+	const lines = [`Measured in Minecraft ${measured.game} (${measured.date}); Oxygen's engine reproduces every result (on an entity, with its model at rest: Oxygen doesn't play entity animations). What the content log reports at load:`, ...measured.loadLog.map((l: string) => `- ${l}`)];
+	for (const t of [...TESTS, ...ENTITY_TESTS]) {
 		const conclusion = results[t.id]?.conclusion ?? '(not recorded)';
 		if (s && !`${t.id} ${t.title} ${t.question} ${conclusion}`.toLowerCase().includes(s)) continue;
 		lines.push('', `${t.id}. ${t.title}`, `Question: ${t.question}`, `Measured: ${conclusion}`);

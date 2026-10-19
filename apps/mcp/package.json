@@ -1,6 +1,6 @@
 {
 	"name": "@oxygen/mcp",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"private": true,
 	"type": "module",
 	"description": "Oxygen for coding agents: an MCP server that creates, edits, checks, simulates and renders Bedrock particle effects",
@@ -23,6 +23,7 @@
 		"@oxygen/format": "workspace:*",
 		"@oxygen/lang": "workspace:*",
 		"@oxygen/metadata": "workspace:*",
+		"@oxygen/scene": "workspace:*",
 		"@oxygen/gamelink": "workspace:*",
 		"@oxygen/testpack": "workspace:*",
 		"@oxygen/ui": "workspace:*",

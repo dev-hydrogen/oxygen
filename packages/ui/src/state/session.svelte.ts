@@ -2,13 +2,13 @@ import { analyzeEffect, type EffectAnalysis, type Problem } from '@oxygen/effect
 import { TimelineRecorder } from './timeline';
 import { JsonDocument, readMeta, validateEffect, type DocumentChange, type OxygenMeta, type Scenario } from '@oxygen/format';
 import { queryExists } from '@oxygen/metadata';
-import { ParticleWorld, type EffectDefinition, type EmitterInstance, type LogEntry, type SpawnContext, type TraceRecord, type WorldSnapshot } from 'wintersky';
+import { ParticleWorld, type EffectDefinition, type EmitterInstance, type LogEntry, type SpawnContext, type TraceRecord, type Vec3, type WorldSnapshot } from 'wintersky';
 import type { FileRef } from '../host';
 import { PreviewQueries } from '../lib/queries';
 import type { Value } from 'molangjs';
 import { PARALLEL_THRESHOLD, ParallelSim, type RemoteEmitter } from '../sim/parallel';
-import { applyPinned, scenarioQuery, scenarioVariables, type InputScene } from '../lib/inputs';
-import { BlockWorld, DEFAULT_ENTITY, DEFAULT_GRADING, DEFAULT_LIGHTING, EntityDummy, type EntitySettings, type GradingModel, type LightingModel, type TextureSet } from '@oxygen/scene';
+import { applyPinned, isContextKey, isTempKey, scenarioQuery, scenarioVariables, writeScenarioGlobals, type InputScene } from '../lib/inputs';
+import { BlockWorld, DEFAULT_ENTITY, DEFAULT_GRADING, DEFAULT_LIGHTING, EntityDummy, readEntity, type EntitySettings, type GradingModel, type LightingModel, type TextureSet } from '@oxygen/scene';
 import { writeMeta } from '@oxygen/format';
 
 export interface SceneSettings {
@@ -35,7 +35,7 @@ export type SpawnMode = 'command' | 'script' | 'entity';
 export const SPAWN_MODES: { id: SpawnMode; label: string; help: string }[] = [
 	{ id: 'command', label: '/particle', help: 'Spawned by a command: one loop, 1000 live particles' },
 	{ id: 'script', label: 'Script API', help: 'spawnParticle with a variable map: one loop, 1000 live particles' },
-	{ id: 'entity', label: 'Entity', help: 'Attached to an entity: loops, 10,000 live particles' },
+	{ id: 'entity', label: 'Entity', help: 'Attached to an entity: looping emitters loop' },
 ];
 
 let nextId = 1;
@@ -265,21 +265,21 @@ export class EffectSession {
 				blocks: this.blocks.size ? (this.blocks.toJSON() as { palette: unknown[]; blocks: number[] }) : null,
 				planes: this.world.planes,
 				scenario: this.activeScenario ? $state.snapshot(this.activeScenario) : null,
-				aabb: this.spawnMode === 'entity' ? (this.entity.attachment(this.scene.entity.locator).aabb ?? null) : null,
+				aabb: this.spawnMode === 'entity' ? this.entity.aabb() : null,
 			}),
 			definition: (id) => (id === this.def?.identifier ? this.def : this.resolveChild(id)),
-			attachment: () => (this.spawnMode === 'entity' ? this.entity.attachment(this.scene.entity.locator) : null),
+			attachment: () => (this.attached ? this.entity.attachment() : null),
 			frameInputs: (dt) => {
 				const c = this.world.camera;
 				const onEntity = this.spawnMode === 'entity';
-				const t = onEntity ? this.entity.attachment(this.scene.entity.locator).getTransform() : null;
+				const f = this.attached ? this.entity.frame() : null;
 				return {
 					dt,
 					camera: { ...c, position: [...c.position], forward: [...c.forward], up: [...c.up], right: [...c.right] },
 					cull: this.world.cullEmitters,
 					timeOfDay: this.timeOfDay,
 					entity: onEntity ? { position: [...this.entity.position], velocity: [...this.entity.velocity], yaw: this.entity.yaw } : null,
-					attachment: t ? { position: [...t.position], rotation: [...t.rotation], velocity: [...t.velocity] } : null,
+					attachment: f ? { position: [...f.position], rotation: [...f.rotation], scale: f.scale, alive: this.entity.alive } : null,
 				};
 			},
 			contentErrors: (errors) => {
@@ -469,7 +469,7 @@ export class EffectSession {
 		const sc = this.scenario;
 		this.activeScenario = sc;
 		this.scenarioQueryNames = new Set(Object.keys(sc?.queries ?? {}).map((k) => k.replace(/\(.*$/, '').toLowerCase()));
-		for (const k of Object.keys(sc?.variables ?? {})) external[canonicalVar(k)] = `scenario “${sc!.name}”`;
+		for (const k of Object.keys(sc?.variables ?? {})) if (!isTempKey(k) && !isContextKey(k)) external[canonicalVar(k)] = `scenario “${sc!.name}”`;
 		if (sc?.preEffect) for (const m of sc.preEffect.matchAll(/\b(?:v|variable)\.([a-z_][a-z0-9_]*)\s*=(?!=)/gi)) external[`variable.${m[1].toLowerCase()}`] = `scenario “${sc.name}” pre-effect`;
 		const analysis = analyzeEffect(def, { external, parents: this.parentInputs, cap: this.capFor(this.spawnMode), spawnContext: this.spawnMode });
 		const problems: Problem[] = [];
@@ -526,12 +526,16 @@ export class EffectSession {
 	spawn(): void {
 		if (!this.def || this.def.failed) return;
 		const sc = this.scenario;
-		const onEntity = this.spawnMode === 'entity';
 		// Repeat loops a looping lifetime in place (no new emitter, so no hitch at the boundary)
 		const loop = (d: EffectDefinition) => (this.loopPreview && d.emitter.lifetime?.type === 'looping' ? true : undefined);
+		if (this.spawnMode === 'entity') this.entity.respawn();
+		// bind_to_actor: false starts it where the entity is (the world origin with a locator) and leaves it there
+		const start = this.spawnMode === 'entity' && this.scene.entity.unbound ? this.entity.unboundStart() : { position: [0, 0, 0] as Vec3, rotation: undefined };
+		writeScenarioGlobals(this.world, sc, this.inputScene());
 		this.rootId = this.world.spawn(this.def, {
-			position: [0, 0, 0],
-			attachment: onEntity ? this.entity.attachment(this.scene.entity.locator) : null,
+			position: start.position,
+			rotation: start.rotation,
+			attachment: this.attached ? this.entity.attachment() : null,
 			context: this.spawnMode,
 			variables: scenarioVariables(sc, this.inputScene()),
 			preEffect: sc?.preEffect ?? null,
@@ -544,6 +548,23 @@ export class EffectSession {
 		// creation events fire on spawn
 		this.timeline.commitEvents(this.world.time);
 		this.sinceSpawn = 0;
+	}
+
+	/** Current value of a context value (c.x) the world supplies */
+	contextValue(name: string): Value | undefined {
+		const slot = this.world.symbols.contexts.get(name.toLowerCase().replace(/^c\./, 'context.'));
+		return slot === undefined ? undefined : this.world.contexts[slot];
+	}
+
+	/** Current value of a temp (t.x) in the shared temp store */
+	tempValue(name: string): Value | undefined {
+		const slot = this.world.symbols.temps.get(name.toLowerCase().replace(/^t\./, 'temp.'));
+		return slot === undefined ? undefined : this.world.temps.get(slot);
+	}
+
+	/** The effect follows the stand-in entity (entity spawn mode, bound to it) */
+	get attached(): boolean {
+		return this.spawnMode === 'entity' && !this.scene.entity.unbound;
 	}
 
 	/** Current value of a variable in the effect's own emitter (null before it runs) */
@@ -577,7 +598,7 @@ export class EffectSession {
 	private loadScene(): void {
 		const saved = readMeta(this.doc).scene as (Partial<SceneSettings> & { blocks?: { palette: []; blocks: number[] }; timeOfDay?: number }) | undefined;
 		if (!saved) return;
-		this.scene = { ...DEFAULT_SCENE, ...saved, keepInFile: true, entity: { ...DEFAULT_ENTITY, ...(saved.entity ?? {}) } };
+		this.scene = { ...DEFAULT_SCENE, ...saved, keepInFile: true, entity: readEntity(saved.entity) };
 		if (typeof saved.timeOfDay === 'number') this.timeOfDay = saved.timeOfDay;
 		if (saved.blocks) for (const [x, y, z, b] of BlockWorld.fromJSON(saved.blocks).entries()) this.blocks.set(x, y, z, b);
 	}

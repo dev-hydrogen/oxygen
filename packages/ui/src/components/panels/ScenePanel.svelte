@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { DEFAULT_LOCATORS, DEFAULT_PATH, readMcstructure, type Motion } from '@oxygen/scene';
+	import { DEFAULT_ENTITY, DEFAULT_PATH, NEW_LOCATOR, locatorsFromGeometry, readMcstructure, type EntitySettings, type Locator, type Motion } from '@oxygen/scene';
+	import type { Vec3 } from 'wintersky';
 	import type { Workspace } from '../../state/workspace.svelte';
 	import Select from '../fields/Select.svelte';
 	import Toggle from '../fields/Toggle.svelte';
@@ -61,6 +62,77 @@
 		return s?.blocks.size ?? 0;
 	});
 	const motion = $derived<Motion>(s?.scene.entity.motion ?? { kind: 'still' });
+
+	const ent = $derived(s?.scene.entity ?? DEFAULT_ENTITY);
+	const locators = $derived(ent.locators ?? []);
+	const current = $derived(ent.locator ? locators.find((l) => l.name === ent.locator) : undefined);
+	let models = $state<{ model: string; locators: Locator[] }[]>([]);
+	let geoNote = $state<string | null>(null);
+
+	function setEntity(patch: Partial<EntitySettings>, restart = true) {
+		if (!s) return;
+		s.setScene({ entity: { ...s.scene.entity, ...patch } }, restart);
+	}
+
+	function setLocator(patch: Partial<Locator>) {
+		if (!current) return;
+		setEntity({ locators: locators.map((l) => (l === current ? { ...l, ...patch } : l)) });
+	}
+
+	function uniqueName(base: string): string {
+		let name = base;
+		for (let i = 2; locators.some((l) => l.name === name); i++) name = `${base}_${i}`;
+		return name;
+	}
+
+	function addLocator() {
+		const name = uniqueName(NEW_LOCATOR.name);
+		setEntity({ locators: [...locators, { ...NEW_LOCATOR, name }], locator: name });
+	}
+
+	function removeLocator() {
+		if (!current) return;
+		setEntity({ locators: locators.filter((l) => l !== current), locator: '' });
+	}
+
+	function renameLocator(raw: string) {
+		const name = raw.trim();
+		if (!current || !name || name === current.name || locators.some((l) => l.name === name)) return;
+		setEntity({ locators: locators.map((l) => (l === current ? { ...l, name } : l)), locator: name });
+	}
+
+	function useModel(id: string) {
+		const m = models.find((x) => x.model === id);
+		if (!m) return;
+		const keep = m.locators.some((l) => l.name === ent.locator);
+		setEntity({ locators: m.locators, model: m.model, locator: keep ? ent.locator : (m.locators[0]?.name ?? '') });
+		geoNote = `${m.locators.length} locator${m.locators.length === 1 ? '' : 's'} from ${m.model}.`;
+	}
+
+	async function importGeometry(file: File) {
+		try {
+			const found = locatorsFromGeometry(JSON.parse(await file.text()));
+			if (!found.length) {
+				geoNote = `${file.name} has no geometry in it.`;
+				return;
+			}
+			models = found;
+			const first = found.find((m) => m.locators.length) ?? found[0];
+			if (!first.locators.length) {
+				geoNote = `${first.model} has no locators.`;
+				return;
+			}
+			useModel(first.model);
+		} catch (e) {
+			geoNote = `Couldn't read ${file.name}: ${(e as Error).message}`;
+		}
+	}
+
+	/** Minecraft yaw as a compass direction */
+	function facingName(yaw: number): string {
+		const names = ['south', 'south-west', 'west', 'north-west', 'north', 'north-east', 'east', 'south-east'];
+		return `facing ${names[Math.round((((yaw % 360) + 360) % 360) / 45) % 8]}`;
+	}
 
 	function setMotion(kind: string) {
 		if (!s) return;
@@ -182,20 +254,64 @@
 					<Toggle checked={s.spawnMode === 'entity'} label="Attach the effect to the entity" onchange={(v) => s.setSpawnMode(v ? 'entity' : 'command')} />
 				</div>
 			</div>
-			<p class="note">Effects on an entity loop and allow 10,000 live particles.</p>
+			<p class="note">An animation or controller plays the effect on the entity. Looping emitters loop there, and each emitter still holds at most 1,000 particles.</p>
+			<div class="row">
+				<span>Follows it</span>
+				<div class="inline">
+					<Toggle checked={!ent.unbound} label="The effect follows the entity (bind_to_actor)" onchange={(v) => setEntity({ unbound: v ? undefined : true })} />
+				</div>
+			</div>
+			{#if ent.unbound}
+				<p class="note">bind_to_actor is false: the effect starts where the entity stands and stays there. With a locator the game starts it at the world origin instead, and so does Oxygen.</p>
+			{/if}
 			<div class="row">
 				<span>Locator</span>
-				<Select value={s.scene.entity.locator} label="Locator" options={DEFAULT_LOCATORS.map((l) => ({ value: l.name, label: l.name.replace(/_/g, ' ') }))} onchange={(v) => s.setScene({ entity: { ...s.scene.entity, locator: v } })} />
+				<Select
+					value={ent.locator}
+					label="Locator"
+					options={[{ value: '', label: 'None (the entity itself)', help: 'locator left out: the effect sits where the entity stands' }, ...locators.map((l) => ({ value: l.name, label: l.name, help: l.bone ? `on bone ${l.bone}` : undefined }))]}
+					onchange={(v) => setEntity({ locator: v })}
+				/>
 			</div>
-			{#if s.scene.entity.locator !== 'root'}
-				<div class="row">
-					<span>Flip Y</span>
-					<div class="inline">
-						<Toggle checked={!!s.scene.entity.locatorFlipY} label="The locator flips the Y axis" onchange={(v) => s.setScene({ entity: { ...s.scene.entity, locatorFlipY: v || undefined } })} />
+			{#if current}
+				<div class="loc">
+					<div class="row">
+						<span>Name</span>
+						<input class="ox-code text" value={current.name} aria-label="Locator name" onchange={(e) => renameLocator(e.currentTarget.value)} />
 					</div>
+					{#if current.frame}
+						<p class="note">From {ent.model ?? 'the model'}{current.bone ? `, bone ${current.bone}` : ''}: at {current.offset.map((n) => +n.toFixed(2)).join(', ')} with its bones' rotation{current.ignoreScale ? ', ignoring the entity’s scale' : ''}.</p>
+					{:else}
+						<div class="vec">
+							<span class="dim">Offset</span>
+							{#each [0, 1, 2] as k (k)}<ScrubNumber label="Locator offset {'xyz'[k]}" value={current.offset[k]} step={1} onchange={(v) => setLocator({ offset: current.offset.map((n, j) => (j === k ? (v ?? 0) : n)) as Vec3 })} />{/each}
+						</div>
+						<div class="vec">
+							<span class="dim">Rotation</span>
+							{#each [0, 1, 2] as k (k)}<ScrubNumber label="Locator rotation {'xyz'[k]}" value={(current.rotation ?? [0, 0, 0])[k]} step={15} onchange={(v) => setLocator({ rotation: (current.rotation ?? [0, 0, 0]).map((n, j) => (j === k ? (v ?? 0) : n)) as Vec3 })} />{/each}
+						</div>
+						<p class="note">As a geometry file writes them: offset in pixels (16 to a block) on the model, whose front is -Z; rotation in degrees.</p>
+					{/if}
 				</div>
-				<p class="note">Some rigs' locators flip the Y axis in-game, so what spawns going up goes down. This mirrors the effect's spawn positions, directions and speeds in Y on the locator to match.</p>
 			{/if}
+			<div class="actions">
+				<button class="btn" onclick={addLocator}>Add locator</button>
+				{#if current}<button class="btn" onclick={removeLocator}>Remove</button>{/if}
+				<label class="btn file">
+					Import from a model
+					<input type="file" accept=".json,.geo.json" onchange={(e) => e.currentTarget.files?.[0] && importGeometry(e.currentTarget.files[0])} />
+				</label>
+			</div>
+			{#if models.length > 1}
+				<div class="row">
+					<span>Model</span>
+					<Select value={ent.model ?? ''} label="Model" options={models.map((m) => ({ value: m.model, label: `${m.model} (${m.locators.length})` }))} onchange={useModel} />
+				</div>
+			{/if}
+			{#if geoNote}<p class="note">{geoNote}</p>{/if}
+			<p class="note">
+				{#if ent.locator}On a locator the effect’s axes are the locator’s with Y flipped, as in-game: an unturned locator points X to the entity’s left, Y down and Z behind it. The viewport draws them.{:else}Without a locator the effect’s axes are the entity’s: X to its right, Y up, Z behind it.{/if}
+			</p>
 			<div class="row">
 				<span>Movement</span>
 				<Select
@@ -211,6 +327,15 @@
 					onchange={setMotion}
 				/>
 			</div>
+			{#if motion.kind === 'still' || motion.kind === 'bob'}
+				<div class="row">
+					<span>Facing</span>
+					<div class="inline">
+						<ScrubNumber label="Facing (yaw)" value={ent.yaw ?? 0} step={15} onchange={(v) => setEntity({ yaw: v ?? 0 }, false)} />
+						<span class="dim">{facingName(ent.yaw ?? 0)}</span>
+					</div>
+				</div>
+			{/if}
 			{#if motion.kind === 'circle'}
 				<div class="row"><span>Radius</span><input class="num ox-num" value={motion.radius} onchange={(e) => setMotionValue('radius', Number(e.currentTarget.value))} /></div>
 				<div class="row"><span>Speed</span><input class="num ox-num" value={motion.speed} onchange={(e) => setMotionValue('speed', Number(e.currentTarget.value))} /></div>
@@ -248,6 +373,29 @@
 				</div>
 				<p class="note">Points are x, y, z in blocks; the entity walks between them at a steady speed, facing where it goes. The viewport draws the path while the effect is on the entity.</p>
 			{/if}
+			{#if motion.kind !== 'still'}
+				<p class="note">Moving the entity moves effects on it, but adds nothing to their particles' speed: the game ignores emitter_local_space velocity for entities.</p>
+			{/if}
+			<div class="row">
+				<span>Scale</span>
+				<ScrubNumber label="Entity scale" value={ent.scale ?? 1} step={0.1} min={0.01} onchange={(v) => setEntity({ scale: v === null || v === 1 ? undefined : v })} />
+			</div>
+			<div class="row">
+				<span>Size</span>
+				<div class="inline pair">
+					<ScrubNumber label="Collision box width" value={ent.width ?? 0.6} step={0.1} min={0} onchange={(v) => setEntity({ width: v ?? 0.6 })} />
+					<ScrubNumber label="Collision box height" value={ent.height ?? 1.8} step={0.1} min={0} onchange={(v) => setEntity({ height: v ?? 1.8 })} />
+				</div>
+			</div>
+			<p class="note">minecraft:scale and the collision box (width, height), which entity_aabb fills. The scale also grows locator offsets and the effect’s size on a locator.</p>
+			<div class="row">
+				<span>Goes away</span>
+				<div class="inline">
+					<ScrubNumber label="Entity goes away after (seconds)" value={ent.removeAfter ?? null} step={0.5} min={0} allowEmpty placeholder="never" onchange={(v) => setEntity({ removeAfter: v ?? undefined })} />
+					<span class="dim">s after the effect starts</span>
+				</div>
+			</div>
+			<p class="note">When the entity despawns, or the animation-controller state that played the effect ends, its emitters stop and particles in its space vanish; world-space ones carry on.</p>
 		</section>
 
 		<section>
@@ -329,6 +477,35 @@
 	}
 	.x:disabled {
 		visibility: hidden;
+	}
+	.loc {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		padding: 4px 0 2px 8px;
+		border-left: 2px solid var(--ox-rule);
+	}
+	.vec {
+		display: grid;
+		grid-template-columns: 58px repeat(3, minmax(0, 1fr));
+		gap: 4px;
+		align-items: center;
+	}
+	.text {
+		height: 22px;
+		min-width: 0;
+		padding: 0 6px;
+		background: var(--ox-input);
+		border: 1px solid transparent;
+		border-radius: var(--ox-radius);
+		outline: none;
+	}
+	.text:focus {
+		border-color: var(--ox-lox);
+	}
+	.pair > :global(*) {
+		flex: 1;
+		min-width: 0;
 	}
 	.extra {
 		display: grid;

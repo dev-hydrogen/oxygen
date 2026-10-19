@@ -100,6 +100,42 @@
 		};
 	});
 
+	/**
+	 * The variables and temps the selected particle's own expressions use, as its turn in the last frame left them:
+	 * after its update (spawn, update and its events) and after its render. Variables belong to the emitter, so the
+	 * shared state further down only shows what the last particle left; an index a particle takes from a counter
+	 * shows here.
+	 */
+	const turn = $derived.by(() => {
+		void tickN;
+		void session?.debugVersion;
+		const s = session;
+		const sel = s?.selection;
+		if (!s || !sel || sel.particle < 0) return null;
+		const own = s.traces.filter((t) => t.particle === sel.particle);
+		if (!own.length) return null;
+		const names: string[] = [];
+		const add = (n: string) => {
+			if (!names.includes(n) && !n.startsWith('variable.particle_') && !n.startsWith('variable.emitter_')) names.push(n);
+		};
+		for (const t of own) {
+			const a = s.analysis.byPath.get(t.path)?.analysis;
+			for (const u of [...(a?.writes ?? []), ...(a?.reads ?? [])]) if (u.ns === 'variable' || u.ns === 'temp') add(u.name);
+		}
+		const last = (render: boolean) => {
+			for (let i = own.length - 1; i >= 0; i--) if ((own[i].phase === 'render') === render) return own[i];
+			return null;
+		};
+		const value = (t: (typeof own)[number] | null, name: string) => {
+			if (!t) return undefined;
+			if (name.startsWith('temp.')) return t.temps.find(([k]) => k === name)?.[1];
+			return t.varsAfter[name];
+		};
+		const update = last(false);
+		const render = last(true);
+		return { hasRender: !!render, rows: names.map((n) => ({ name: n, update: value(update, n), render: value(render, n) })) };
+	});
+
 	function f(n: number, d = 3) {
 		if (Number.isNaN(n)) return 'NaN';
 		return String(Math.round(n * 10 ** d) / 10 ** d);
@@ -234,7 +270,17 @@
 					{/each}
 				</ol>
 
-				<h4>Variables <span class="dim">(shared by every particle of the emitter)</span></h4>
+				{#if turn?.rows.length}
+					<h4>Its turn <span class="dim">(the values its own expressions left in the last frame)</span></h4>
+					<div class="grid turn ox-num" class:two={turn.hasRender}>
+						<span class="dim">Variable</span><span class="dim">After its update</span>{#if turn.hasRender}<span class="dim">After its render</span>{/if}
+						{#each turn.rows as r (r.name)}
+							<span class="ox-code">{short(r.name)}</span><span>{r.update === undefined ? '—' : show(r.update)}</span>{#if turn.hasRender}<span>{r.render === undefined ? '—' : show(r.render)}</span>{/if}
+						{/each}
+					</div>
+				{/if}
+
+				<h4>Variables <span class="dim">(shared by every particle of the emitter, as the last one left them)</span></h4>
 				<div class="grid vars ox-num">
 					{#each Object.entries(pinfo.vars).filter(([k]) => !k.startsWith('variable.particle_') && !k.startsWith('variable.emitter_')) as [k, v] (k)}
 						<span class="ox-code">{short(k)}</span><span>{show(v)}</span>
@@ -359,6 +405,14 @@
 	}
 	.grid > span:nth-child(odd) {
 		color: var(--ox-haze);
+	}
+	.grid.turn {
+		grid-template-columns: auto auto;
+		justify-content: start;
+		column-gap: 16px;
+	}
+	.grid.turn.two {
+		grid-template-columns: auto auto auto;
 	}
 	.grid.vars {
 		grid-template-columns: minmax(90px, max-content) 1fr;

@@ -85,7 +85,8 @@ export function installUpdate(): void {
 export function setAutomatic(on: boolean): void {
 	automatic = on;
 	autoUpdater.autoDownload = on;
-	autoUpdater.autoInstallOnAppQuit = on;
+	// a test feed's update never installs on quit: it would replace the Oxygen installed on this machine
+	autoUpdater.autoInstallOnAppQuit = on && !process.env.OXYGEN_UPDATE_FEED;
 }
 
 /** Start checking: soon after launch, then every few hours */

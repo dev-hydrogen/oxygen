@@ -108,6 +108,7 @@ export async function openSession(req: SessionRequest): Promise<OpenedSession> {
 	if (req.spawn && session.spawnMode !== req.spawn) session.setSpawnMode(req.spawn);
 	// every play starts with a restart, which spawns these too
 	if (req.extras) session.setScene({ extras: req.extras.length ? req.extras : undefined }, false);
+	if (req.entity) session.setScene({ entity: { ...session.scene.entity, ...req.entity } }, false);
 	session.loopPreview = req.repeat;
 	await new Workspace(host).loadPackVisuals(session);
 	return {

@@ -52,7 +52,7 @@ export function engineFacts(): Fact[] {
 		{ label: 'Queries known', value: `${molangMetadata.queries.length}` },
 		{ label: 'Math functions', value: `${molangMetadata.math.length}` },
 		{ label: 'Components', value: `${COMPONENTS.length}` },
-		{ label: 'Live particles per emitter', value: '1,000 when spawned by /particle or a script (measured in-game), 10,000 on an entity' },
+		{ label: 'Live particles per emitter', value: '1,000, whether spawned by /particle, a script or an entity (measured in-game)' },
 	];
 }
 

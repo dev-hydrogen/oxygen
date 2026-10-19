@@ -29,7 +29,7 @@ export interface FrameInputs {
 	timeOfDay: number;
 	/** the stand-in entity (entity spawn mode), and its locator's transform for attached emitters */
 	entity: { position: Vec3; velocity: Vec3; yaw: number } | null;
-	attachment: { position: Vec3; rotation: Quat; velocity: Vec3 } | null;
+	attachment: { position: Vec3; rotation: Quat; scale: number; alive: boolean } | null;
 }
 
 export type ToSim =

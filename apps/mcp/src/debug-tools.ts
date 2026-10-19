@@ -10,7 +10,7 @@ import type { PreviewBrowser } from './browser';
 import { PARTICLE_FIELDS } from './debug/records';
 import { analyzeMolang, evaluateStandalone } from './molang';
 import type { CameraRequest, InspectQuery, InspectResult, Phase, Vec3 } from './protocol';
-import { sessionRequest, type PlayOptions } from './requests';
+import { entitySchema, sessionRequest, type EntityArgs, type PlayOptions } from './requests';
 import { data, existing, tool } from './util';
 
 const PHASES = ['creation', 'emitter-update', 'spawn', 'particle-update', 'render', 'event'] as const;
@@ -20,6 +20,7 @@ const path = z.string().describe('Path to the particle file (absolute, or relati
 const time = z.number().min(0).max(120).describe('Seconds after the spawn. The effect replays from the spawn at 60 fps, so this picks one frame: the one that reaches it');
 const play = {
 	spawn: z.enum(['command', 'script', 'entity']).optional().describe("How it's started: 'command' (/particle, default), 'script' (Script API) or 'entity' (on an entity, which loops looping emitters)"),
+	entity: entitySchema,
 	repeat: z.boolean().optional().describe("Oxygen's Repeat (default false: /particle plays once, like the game)"),
 	time_of_day: z.number().min(0).max(1).optional().describe('query.time_of_day: 0 midnight, 0.25 sunrise, 0.5 noon'),
 	others: z.array(z.object({ effect: z.string(), position: vec3.optional() })).max(8).optional().describe('Other effects playing in the same world (shared temps, counts)'),
@@ -29,10 +30,11 @@ const play = {
 		.describe("Where the simulation's camera is (culling, q.distance_from_camera, camera-facing). Default: the editor's starting view"),
 };
 
-type PlayArgs = { spawn?: 'command' | 'script' | 'entity'; repeat?: boolean; time_of_day?: number; others?: { effect: string; position?: number[] }[]; sim_camera?: { position: number[]; target: number[]; fov?: number } };
+type PlayArgs = { spawn?: 'command' | 'script' | 'entity'; entity?: EntityArgs; repeat?: boolean; time_of_day?: number; others?: { effect: string; position?: number[] }[]; sim_camera?: { position: number[]; target: number[]; fov?: number } };
 
 const playOptions = (a: PlayArgs): PlayOptions => ({
 	spawn: a.spawn,
+	entity: a.entity,
 	repeat: !!a.repeat,
 	timeOfDay: a.time_of_day,
 	others: a.others,
@@ -172,7 +174,7 @@ export function registerDebugTools(server: McpServer, browser: PreviewBrowser): 
 				"Evaluate a Molang expression with the game's rules: 32-bit floats, degrees, an unset variable or temp aborts the whole expression (it gives 0), `??`, loop/break/continue, statements without `return` give 0. Three ways:\n" +
 				"1. With `path`, `time` and `at` (a field's JSON path): at the exact moment that field is evaluated in that frame, for every particle (or one `particle`), just before or after it runs, in the same environment: the emitter's variable map as the particles before it left it, the particle's own built-ins and curves, queries, temps. This is what each particle really saw, so it's the way to check effects that pass values between particles through shared variables (index counters like `v.i = v.next; v.next = v.next + 1;`, render-pass layouts) or through temps. The frame plays on unchanged.\n" +
 				'2. With `path` and `time` only: in an emitter (`emitter`, default the effect\'s own) or a particle (`particle`) as that frame left it. Shared variables then hold whatever the last writer left.\n' +
-				'3. Without `path`: standalone, with `variables`, `temps` and `queries` you give.\n' +
+				'3. Without `path`: standalone, with `variables`, `temps`, `contexts` and `queries` you give.\n' +
 				'Returns the value, whether it aborted, the value of every part, and the variables it set. Nothing in the effect changes.',
 			inputSchema: {
 				expression: z.string(),
@@ -187,6 +189,7 @@ export function registerDebugTools(server: McpServer, browser: PreviewBrowser): 
 				parts: z.boolean().optional().describe('With `at`: every part’s value in each result (default: when one particle is asked for)'),
 				variables: z.record(z.string(), z.union([z.number(), z.string()])).optional().describe("Standalone: v.* values, e.g. {'v.size': 0.5}"),
 				temps: z.record(z.string(), z.union([z.number(), z.string()])).optional().describe('Standalone: t.* values'),
+				contexts: z.record(z.string(), z.union([z.number(), z.string()])).optional().describe('Standalone: c.* values (context values the caller supplies)'),
 				queries: z.record(z.string(), z.union([z.number(), z.string()])).optional().describe("Standalone: query values by name or exact call, e.g. {'q.time_of_day': 0.5, 'query.position(1)': 2}"),
 				engine: z.union([z.string(), z.array(z.number())]).optional().describe('Standalone: the min_engine_version whose Molang rules apply'),
 				...play,
@@ -197,7 +200,7 @@ export function registerDebugTools(server: McpServer, browser: PreviewBrowser): 
 			tool(async () => {
 				if (!a.path) {
 					if (a.at) throw new Error('`at` needs the effect: give `path` (and `time`).');
-					return data('Standalone evaluation:', evaluateStandalone({ expression: a.expression, variables: a.variables, temps: a.temps, queries: a.queries, engine: a.engine ?? null }));
+					return data('Standalone evaluation:', evaluateStandalone({ expression: a.expression, variables: a.variables, temps: a.temps, contexts: a.contexts, queries: a.queries, engine: a.engine ?? null }));
 				}
 				const t = a.time ?? 0;
 				if (a.at) {

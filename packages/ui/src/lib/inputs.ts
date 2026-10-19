@@ -153,10 +153,52 @@ export function scenarioVariables(sc: Scenario | null, scene: InputScene): Recor
 	if (!sc?.variables) return undefined;
 	const out: Record<string, Value> = {};
 	for (const [k, v] of Object.entries(sc.variables)) {
+		if (isTempKey(k) || isContextKey(k)) continue;
 		const val = evalInput(v, scene);
 		if (val !== undefined) out[k] = val;
 	}
 	return out;
+}
+
+/** Scenario inputs named t.x (or temp.x) are temps: they go into the shared temp store, not to the emitter */
+export function isTempKey(k: string): boolean {
+	return /^(t|temp)\./i.test(k);
+}
+
+/** Scenario inputs named c.x (or context.x) are context values: the world supplies them to every expression */
+export function isContextKey(k: string): boolean {
+	return /^(c|context)\./i.test(k);
+}
+
+function tempSlot(w: ParticleWorld, k: string): number {
+	return w.symbols.temp(`temp.${k.replace(/^(t|temp)\./i, '').toLowerCase()}`);
+}
+
+function contextSlot(w: ParticleWorld, k: string): number {
+	return w.symbols.context(`context.${k.replace(/^(c|context)\./i, '').toLowerCase()}`);
+}
+
+/** A temp or context input into the world's store; false for an emitter variable */
+function writeGlobal(w: ParticleWorld, k: string, val: Value): boolean {
+	if (isTempKey(k)) w.temps.set(tempSlot(w, k), val);
+	else if (isContextKey(k)) w.contexts[contextSlot(w, k)] = val;
+	else return false;
+	return true;
+}
+
+/**
+ * The scenario's temps and context values, written into the world just before the effect spawns: temps as a
+ * parent's event expression leaves them before it spawns a child (temps are global in-game, t05/t30), context
+ * values as the caller would supply them
+ */
+export function writeScenarioGlobals(w: ParticleWorld, sc: Scenario | null, scene: InputScene): void {
+	// the scenario is all the context there is: a value it no longer has is unset
+	w.contexts.length = 0;
+	for (const [k, v] of Object.entries(sc?.variables ?? {})) {
+		if (!isTempKey(k) && !isContextKey(k)) continue;
+		const val = evalInput(v, scene);
+		if (val !== undefined) writeGlobal(w, k, val);
+	}
 }
 
 /** Short display of an input for lists and tooltips */
@@ -169,7 +211,7 @@ export function describeInput(v: InputValue): string {
 	return SCENE_SOURCES.find((s) => s.id === v.scene)?.label ?? v.scene;
 }
 
-/** Pinned scenario variables, written into the root emitters before every update (main thread or worker) */
+/** Pinned scenario variables, written into the root emitters (temps and context values: the world) before every update (main thread or worker) */
 export function applyPinned(w: ParticleWorld, sc: Scenario | null, scene: InputScene): void {
 	if (!sc?.pinned?.length || !sc.variables) return;
 	for (const name of sc.pinned) {
@@ -177,6 +219,7 @@ export function applyPinned(w: ParticleWorld, sc: Scenario | null, scene: InputS
 		if (input === undefined) continue;
 		const value = evalInput(input, scene);
 		if (value === undefined) continue;
+		if (writeGlobal(w, name, value)) continue;
 		const slot = w.symbols.variable(name.toLowerCase().replace(/^v\./, 'variable.'));
 		for (const e of w.emitters) if (!e.parent) e.vars[slot] = value;
 	}

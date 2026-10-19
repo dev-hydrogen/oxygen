@@ -112,7 +112,9 @@ And Minecraft itself, through the same link as the desktop app's Game menu:
 
 Previews and simulations play the effect the way `/particle` does unless asked otherwise (`spawn`: `script` or
 `entity`), and play it once, like the game. They use a fixed clock and the same random seed every time, so the
-same file always gives the same pictures and numbers. The camera frames every particle across the chosen times,
+same file always gives the same pictures and numbers. On an entity, the `entity` option describes it: the locator,
+locators written like a geometry file or taken from a `.geo.json`, `bind_to_actor`, facing, movement, scale,
+collision box and when it goes away. The camera frames every particle across the chosen times,
 from an angle the agent picks; it can also be placed by hand or taken from a view saved in the file. The ground
 grid sits at y = 0 and the small outlined cube is one block.
 

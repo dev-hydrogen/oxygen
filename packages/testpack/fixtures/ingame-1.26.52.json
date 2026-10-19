@@ -749,6 +749,106 @@
 				}
 			},
 			"vvByTimeNote": "Keys are query.time_of_day (midnight 0, sunrise 0.25, noon 0.5, sunset 0.75); the row seen from 14 blocks after exposure settled (about 8 s)."
+		},
+		"e01": {
+			"p1": "X west, Y up, Z north (yaw 0)",
+			"p2": "X east, Y down, Z north",
+			"p3": "triad 0.5 east of p2",
+			"p4": "triad 0.5 north of p2",
+			"p5": "X east, Y north, Z up",
+			"p6": "X south, Y down, Z east",
+			"p7": "X down, Y west, Z north",
+			"p8": "X (0.87, 0, 0.5)",
+			"conclusion": "Without a locator an effect sits at the entity's feet in the entity's frame: X to its right, Y up, Z behind it (yaw 0: X west, Z north). On a locator its offset is model pixels / 16 with the model's +X to the entity's left (east) and +Z behind it, and its frame is the locator's rotation with the Y axis flipped: an unturned locator gives X east, Y down, Z north. Relative to the entity frame that is a half turn about Z, so X flips as well as Y. Locator rotations follow the geometry convention (Rz(-z) Ry(y) Rx(-x) in model space)."
+		},
+		"e02": {
+			"p1": "like the [90,0,0] locator; dot 0.5 above",
+			"p2": "like the [0,90,0] locator; dot 0.5 south",
+			"p3": "like the [0,0,90] locator",
+			"p4": "same as p1",
+			"p5": "same as p2",
+			"p6": "same as p3",
+			"p7": "moved 0.5 east",
+			"p8": "triad twice as long, 1 block east",
+			"p9": "X south, Y east, Z up at (0, 1.5, 0.5)",
+			"conclusion": "Locators follow their bones: rotations from the geometry and from animations apply the same way, about the bone's pivot, through the whole parent chain; animated position moves them; animated scale scales both the offset and the emitter frame."
+		},
+		"e03": {
+			"p1": "locator up at yaw 90: X south, Z east",
+			"p4": "no locator at yaw 90: X north, Z east",
+			"p5": "position-only local space: same axes at spawn",
+			"p6": "world space: same axes at spawn",
+			"conclusion": "The body yaw (Minecraft yaw, 90 = facing west) turns the whole frame. Emitters in world space or position-only local space spawn in the same frame as fully local ones."
+		},
+		"e04": {
+			"conclusion": "Shape directions and initial speeds turn with the same frame as offsets (rotated bones included). A scaled frame does not scale speeds: streams on the scaled bone are as long as the others."
+		},
+		"e05": {
+			"p1": "X south, Y east, Z up",
+			"p2": "X down, Y north, Z east",
+			"p3": "X south, Y west, Z down",
+			"p4": "X (0.35,-0.61,0.71), Y (-0.57,-0.74,-0.35), Z (0.74,-0.28,-0.61)",
+			"p6": "not scaled; moved by the scaled bone (1 block east, 1 up from the pivot)",
+			"p7": "bone mirrored by an animation: offsets mirror (8 pixels +X go west); the frame comes out X down, Y west, Z north",
+			"p8": "scale 2: offset to 3 blocks, frame twice as long",
+			"conclusion": "Combined rotations apply X, then Y, then Z (geometry convention), on bones as on locators. ignore_inherited_scale keeps the frame unscaled but the locator still moves with the scaled bone. minecraft:scale scales locator offsets and locator frames. A bone mirrored by an animation mirrors offsets; its frame is turned rather than mirrored."
+		},
+		"e06": {
+			"p1": "local triad follows and turns with the entity",
+			"p2": "world trail traces the circle; local trail stays on the entity",
+			"p3": "velocity: true particles trail exactly like plain ones",
+			"p6": "bind_to_actor false with a locator: at the world origin",
+			"conclusion": "Local-space particles follow and turn with the entity, world-space ones stay where they spawned. emitter_local_space velocity: true adds nothing from a teleported entity. bind_to_actor: false with a locator starts the emitter at the world origin."
+		},
+		"e07": {
+			"p1": true,
+			"p2": false,
+			"p3": true,
+			"p4": false,
+			"p5": true,
+			"p6": true,
+			"p7": false,
+			"conclusion": "Particle and emitter Molang on an entity read the entity's queries (q.variant, q.property, q.position = the entity's feet, not the locator), in pre_effect_script and per_update too, but they read 0 in the emitter's creation_expression. The entity's own variables are not visible (unknown variable errors)."
+		},
+		"e08": {
+			"p1": "a new emitter each pass of the looping animation",
+			"p2": "the looping emitter loops",
+			"p3": "keeps running after its animation stops",
+			"p4": "stops when its controller state ends",
+			"p5": "stops when the entity despawns; its world-space particles stay",
+			"p6": "keeps running",
+			"conclusion": "Each pass of a looping animation fires a new emitter, and looping emitters loop on an entity. An emitter outlives the animation that fired it, but leaving an animation-controller state ends the effects it started, as does the entity going away."
+		},
+		"e09": {
+			"p1": "one dot: 1000 particles",
+			"p2": "0.6 x 1.8 box at the feet",
+			"p3": "the box hangs down from the locator (its Y flipped)",
+			"p4": "the box lies along the locator frame",
+			"conclusion": "An instant burst on an entity is capped at 1000 live particles too (creators had reported 10,000). entity_aabb fills the entity's collision box placed at the emitter in the emitter's frame, not around the entity."
+		},
+		"e10": {
+			"p1": "relative_position [1,0,2] lands at world (1, 0, 2)",
+			"p2": "local relative_position from the locator",
+			"p3": "bind_to_actor false with a locator: at the world origin",
+			"p5": true,
+			"p6": "scaled like the local one",
+			"p7": "no locator: not scaled",
+			"conclusion": "World-space emitters on an entity take parametric relative_position from the world origin, not the emitter. emitter per_update_expression sees the entity's queries. The entity's scale does not scale its own frame (no locator)."
+		},
+		"e11": {
+			"p1": "velocity: true trail identical to the plain one",
+			"p2": "a dot every block travelled",
+			"p3": "local triad turns with the spinning bone; world trail draws a 0.5 circle round the pivot",
+			"p5": "bar 1 block long: q.position(1) is the feet",
+			"conclusion": "With real physics movement velocity: true still adds nothing. Travel-distance events fire once a block at the entity's position. Effects follow locators that animations move."
+		},
+		"e12": {
+			"p1": "one dot: 1000 particles",
+			"p2": "local triad gone with the entity; world dot and rising particles stay, no new ones",
+			"p3": "bind_to_actor false without a locator: at the entity, stays",
+			"conclusion": "A steady emitter on an entity also holds 1000 particles. When the entity goes, its emitters stop, particles in its space vanish and world-space ones live on. bind_to_actor: false without a locator starts the effect where the entity stands."
 		}
-	}
+	},
+	"entityDate": "2026-10-19",
+	"entityMethod": "BedrockMCP screenshots of the oxygen:rig entity tests (e01-e12): close-up top and front views of axis triads (X red, Y green, Z blue, thin at the emitter, thick at the +1 end) drawn in each emitter frame"
 }

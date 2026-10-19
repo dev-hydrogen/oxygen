@@ -4,7 +4,8 @@ import type { EffectSession } from '../state/session.svelte';
 
 /**
  * Preview-world geometry: blocks (drawn as their collision boxes, tinted by type; passable blocks such as
- * water or plants as translucent cubes) and the entity stand-in with its active locator.
+ * water or plants as translucent cubes) and the entity stand-in with its locators: a dot for each, and the axes of
+ * the frame the effect is attached to (X red, Y green, Z blue).
  */
 export class SceneObjects {
 	readonly group = new THREE.Group();
@@ -14,7 +15,13 @@ export class SceneObjects {
 	get entityObject(): THREE.Object3D {
 		return this.entity;
 	}
-	private locator: THREE.Mesh;
+	/** the collision box (scaled to the entity's size) */
+	private box: THREE.LineSegments;
+	/** the axes of the frame the effect sits in */
+	private axes = new THREE.AxesHelper(0.5);
+	/** a dot at every locator */
+	private dots: THREE.Points;
+	private dotsKey = '';
 	/** the entity's waypoint path, when it walks one */
 	private path = new THREE.Group();
 	private pathKey = '';
@@ -24,16 +31,20 @@ export class SceneObjects {
 
 	constructor() {
 		this.group.add(this.blocks, this.entity);
-		// entity: a player-sized box with a nose showing which way it faces
-		const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.6, 1.8, 0.6)), new THREE.LineBasicMaterial({ color: 0xdfe5f0, transparent: true, opacity: 0.6 }));
-		box.position.y = 0.9;
+		// entity: its collision box with a nose showing which way it faces
+		this.box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0)), new THREE.LineBasicMaterial({ color: 0xdfe5f0, transparent: true, opacity: 0.6 }));
 		const nose = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.25, 12), new THREE.MeshBasicMaterial({ color: 0x93bdf5 }));
 		nose.rotation.x = Math.PI / 2;
-		nose.position.set(0, 1.62, 0.42);
-		this.entity.add(box, nose);
-		this.locator = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8), new THREE.MeshBasicMaterial({ color: 0x93bdf5, depthTest: false }));
-		this.locator.renderOrder = 15;
-		this.group.add(this.locator, this.path);
+		nose.position.set(0, 0.9, 0.42);
+		nose.name = 'nose';
+		this.entity.add(this.box, nose);
+		const axesMat = this.axes.material as THREE.LineBasicMaterial;
+		axesMat.depthTest = false;
+		axesMat.transparent = true;
+		this.axes.renderOrder = 15;
+		this.dots = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x93bdf5, size: 6, sizeAttenuation: false, depthTest: false, transparent: true }));
+		this.dots.renderOrder = 15;
+		this.group.add(this.axes, this.dots, this.path);
 	}
 
 	private rebuildPath(m: Extract<Motion, { kind: 'path' }>) {
@@ -64,8 +75,10 @@ export class SceneObjects {
 			this.rebuildBlocks(s);
 		}
 		const onEntity = s.spawnMode === 'entity';
-		this.entity.visible = onEntity && this.showEntity;
-		this.locator.visible = onEntity && this.showEntity;
+		const shown = onEntity && this.showEntity && s.entity.alive;
+		this.entity.visible = shown;
+		this.axes.visible = shown;
+		this.dots.visible = shown;
 		const motion = s.scene.entity.motion;
 		this.path.visible = onEntity && this.showEntity && motion.kind === 'path';
 		if (this.path.visible && motion.kind === 'path') {
@@ -75,12 +88,27 @@ export class SceneObjects {
 				this.rebuildPath(motion);
 			}
 		}
-		if (onEntity) {
+		if (shown) {
 			const e = s.entity;
+			const set = s.scene.entity;
 			this.entity.position.set(e.position[0], e.position[1], e.position[2]);
-			this.entity.quaternion.set(...e.rotation);
-			const lp = e.locatorPosition(s.scene.entity.locator);
-			this.locator.position.set(lp[0], lp[1], lp[2]);
+			// Minecraft yaw turns the other way round Y from three's
+			this.entity.rotation.set(0, (-e.yaw * Math.PI) / 180, 0);
+			const sc = e.scale;
+			this.box.scale.set((set.width ?? 0.6) * sc, (set.height ?? 1.8) * sc, (set.width ?? 0.6) * sc);
+			const nose = this.entity.getObjectByName('nose');
+			nose?.position.set(0, (set.height ?? 1.8) * sc * 0.9, ((set.width ?? 0.6) * sc) / 2 + 0.12);
+			const f = e.frame();
+			this.axes.position.set(...f.position);
+			this.axes.quaternion.set(...f.rotation);
+			this.axes.scale.setScalar(f.scale);
+			const pts = e.locators.map((l) => e.frame(l.name).position);
+			const key = pts.map((p) => p.map((n) => n.toFixed(3)).join(',')).join(';');
+			if (key !== this.dotsKey) {
+				this.dotsKey = key;
+				this.dots.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts.flat(), 3));
+				this.dots.geometry.computeBoundingSphere();
+			}
 		}
 	}
 

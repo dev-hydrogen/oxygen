@@ -1491,3 +1491,6 @@ export function probeCurves(testId: string, probeId: string): Json | undefined {
 	if (testId === 't03' && probeId === 'p5') return { 'variable.unused': { type: 'linear', input: 'v.particle_age', horizontal_range: 1, nodes: [0, '1 +* 2', 0] } };
 	return undefined;
 }
+
+/** Tests of effects on an entity (the oxygen:rig entity) */
+export { ENTITY_TESTS, type EntityTest } from './entity';

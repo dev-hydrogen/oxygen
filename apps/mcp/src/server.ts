@@ -13,7 +13,7 @@ import { analyze, applyEdits, formatProblems, load, newEffectText, rewriteDiff, 
 import { BUNDLED, childEffects, effectIndex, examples, packRoot, textureFile } from './pack';
 import type { CameraRequest, RunRequest, RunResult, Vec3 } from './protocol';
 import { reference } from './reference';
-import { sessionRequest } from './requests';
+import { entitySchema, sessionRequest, type EntityArgs } from './requests';
 import { existing, text, tool } from './util';
 import { registerDebugTools } from './debug-tools';
 import { registerGameTools } from './game';
@@ -50,7 +50,7 @@ function sampleTimes(times: number[] | undefined, duration: number, samples: num
 	return out;
 }
 
-function runRequest(path: string, o: { times: number[]; spawn?: SpawnMode; repeat: boolean; timeOfDay?: number; render: RunRequest['render']; others?: { effect: string; position?: number[] }[] }): { request: RunRequest; missingChildren: string[] } {
+function runRequest(path: string, o: { times: number[]; spawn?: SpawnMode; repeat: boolean; timeOfDay?: number; render: RunRequest['render']; others?: { effect: string; position?: number[] }[]; entity?: EntityArgs }): { request: RunRequest; missingChildren: string[] } {
 	const { request, missingChildren } = sessionRequest(path, o);
 	const { camera: _camera, ...rest } = request;
 	return { request: { ...rest, times: o.times, render: o.render }, missingChildren };
@@ -263,16 +263,17 @@ server.registerTool(
 			samples: z.number().int().min(1).max(24).optional().describe('How many evenly spaced samples (default 6)'),
 			times: z.array(z.number().min(0).max(60)).optional().describe('Exact sample times in seconds (overrides duration and samples)'),
 			spawn: spawnSchema,
+			entity: entitySchema,
 			repeat: z.boolean().optional().describe("Oxygen's Repeat: start the effect again when it ends (default false: /particle plays once, like the game)"),
 			others: othersSchema,
 			include_info: z.boolean().optional(),
 		},
 		annotations: { readOnlyHint: true },
 	},
-	({ path, duration, samples, times, spawn, repeat, others, include_info }) =>
+	({ path, duration, samples, times, spawn, entity, repeat, others, include_info }) =>
 		tool(async () => {
 			const p = existing(path);
-			const { request, missingChildren } = runRequest(p, { times: sampleTimes(times, duration ?? 3, samples ?? 6), spawn, repeat: !!repeat, render: null, others });
+			const { request, missingChildren } = runRequest(p, { times: sampleTimes(times, duration ?? 3, samples ?? 6), spawn, repeat: !!repeat, render: null, others, entity });
 			return text(report(await browser.run(request), p, missingChildren, !!include_info));
 		}),
 );
@@ -309,6 +310,7 @@ server.registerTool(
 			save_to: z.string().optional().describe('Write the PNG(s) here: a .png file, or a folder for one file per picture'),
 			return_images: z.boolean().optional().describe('Put the pictures in the reply (default true). false needs save_to: only the numbers and the saved paths come back'),
 			spawn: spawnSchema,
+			entity: entitySchema,
 			repeat: z.boolean().optional().describe("Oxygen's Repeat (default false: /particle plays once, like the game)"),
 			others: othersSchema,
 			include_info: z.boolean().optional(),
@@ -334,6 +336,7 @@ server.registerTool(
 				timeOfDay: a.time_of_day,
 				render: { width: a.width ?? 480, height: a.height ?? 360, mode: a.mode ?? 'classic', camera, ground: a.ground ?? true, gizmos: !!a.gizmos, sheet },
 				others: a.others,
+				entity: a.entity,
 			});
 			const r = await browser.run(request);
 			const pngs = r.images.map((url) => url.replace(/^data:image\/png;base64,/, ''));

@@ -1,7 +1,7 @@
 import { queryExists } from '@oxygen/metadata';
 import { ParticleWorld, type EffectDefinition } from 'wintersky';
 import type { EffectSession } from '../state/session.svelte';
-import { scenarioVariables } from './inputs';
+import { scenarioVariables, writeScenarioGlobals } from './inputs';
 
 export interface Series {
 	id: number;
@@ -25,6 +25,7 @@ function sandbox(session: EffectSession, seed: number): { world: ParticleWorld; 
 	world.resolveEffect = () => null;
 	world.beforeUpdate = (w) => session.applyPinned(w);
 	const sc = session.scenario;
+	writeScenarioGlobals(world, sc, session.inputScene(world));
 	world.spawn(def, { position: [0, 0, 0], context: session.spawnMode, variables: scenarioVariables(sc, session.inputScene(world)), preEffect: sc?.preEffect ?? null });
 	return { world, def };
 }

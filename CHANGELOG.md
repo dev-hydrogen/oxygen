@@ -1,6 +1,6 @@
 # Changelog
 
-## Oxygen 0.3.0 (unreleased)
+## Oxygen 0.2.1
 
 ### Added
 
@@ -11,6 +11,36 @@
   install that one by hand.
 - The web app tells a tab left open when a newer version is out, and reloads into it on request.
 - MCP servers installed from the release zip tell the agent when a newer release is out, and how to update.
+- Effects on an entity use real locators. Import them from a model's `.geo.json` (worked out through its bones)
+  or make your own with an offset and rotation as a geometry file writes them. The viewport draws the axes the
+  effect gets. The stand-in entity also has a scale, a collision box size for `entity_aabb`, a facing, a time
+  when it goes away, and a *Follows it* switch for `bind_to_actor: false`. The MCP tools take all of these as an
+  `entity` option.
+- The Inspector's texture area shows a small picture of what the particle draws (the area, or a flipbook's first
+  frame). Clicking it opens the Texture panel.
+- The Context panel takes temps (`t.size`) as inputs too, as a parent's event leaves them before it spawns the
+  effect, and context values (`c.size`), which every expression can read. `evaluate_molang` takes `contexts` too.
+- The Debug panel shows the values a selected particle's own expressions left on its turn in the frame, such as the
+  index it took from a counter, next to what the emitter's shared variables hold now.
+
+### Changed
+
+- Effects on an entity now behave as measured in the game (test pack `e01`–`e12`):
+  - A locator flips the effect's axes: an unturned locator points Y down and X to the entity's left. Without a
+    locator X points to the entity's right and Z behind it.
+  - An emitter on an entity holds 1,000 particles, not 10,000.
+  - The entity's movement adds no speed to its particles, even with `emitter_local_space` velocity on.
+  - World-space effects on an entity take `relative_position` from the world origin.
+  - `entity_aabb` fills the entity's box at the emitter, in the emitter's axes.
+  - Entity queries read 0 in an emitter's creation expression. `q.position` is where the entity stands.
+  - When the entity goes away, particles in its space go with it.
+- The entity's facing uses Minecraft's yaw: 0 is south, 90 west.
+- The Scene panel no longer offers made-up attachment points (head, hands and so on) as locators. Scenes saved
+  with them keep them as locators at the same places.
+
+### Removed
+
+- The *Flip Y* switch for locators. Every locator flips its axes in the game, so Oxygen always does.
 
 ### Fixed
 

@@ -25,15 +25,22 @@
 		void session?.version;
 		return (session?.analysis.variables ?? []).filter((v) => !v.builtin);
 	});
-	const short = (n: string) => n.replace(/^variable\./, 'v.');
-	const canon = (n: string) => n.toLowerCase().replace(/^v\./, 'variable.');
+	const short = (n: string) => n.replace(/^variable\./, 'v.').replace(/^temp\./, 't.').replace(/^context\./, 'c.');
+	const canon = (n: string) => n.toLowerCase().replace(/^v\./, 'variable.').replace(/^t\./, 'temp.').replace(/^c\./, 'context.');
+	const isTemp = (n: string) => /^(t|temp)\./i.test(n);
+	const isContext = (n: string) => /^(c|context)\./i.test(n);
+	/** variables, then temps, then context values */
+	const order = (n: string) => (isContext(n) ? 2 : isTemp(n) ? 1 : 0);
 
-	/** variables the effect reads but never sets, plus any the scenario supplies */
+	/** variables and temps the effect reads but never sets, the context values it reads, plus any the scenario supplies */
 	const inputNames = $derived.by(() => {
+		void session?.version;
 		const names = new Set<string>();
 		for (const v of variables) if (!v.writes.length && !v.curve && v.reads.length) names.add(short(v.name));
+		for (const t of session?.analysis.tempInputs ?? []) names.add(short(t));
+		for (const c of session?.analysis.contextInputs ?? []) names.add(short(c));
 		for (const k of Object.keys(active?.variables ?? {})) names.add(short(canon(k)));
-		return [...names].sort();
+		return [...names].sort((a, b) => order(a) - order(b) || a.localeCompare(b));
 	});
 	const queries = $derived.by(() => {
 		void session?.version;
@@ -68,7 +75,7 @@
 	}
 	function liveVar(name: string) {
 		void tick;
-		return session?.variableValue(name);
+		return isContext(name) ? session?.contextValue(name) : isTemp(name) ? session?.tempValue(name) : session?.variableValue(name);
 	}
 
 	function save(list: Scenario[], activeName: string | null | undefined, label: string) {
@@ -176,7 +183,7 @@
 	let addingVar = $state('');
 	function addVariable() {
 		const t = addingVar.trim();
-		if (!/^(v|variable)\.[a-z_][a-z0-9_]*$/i.test(t)) return;
+		if (!/^(v|variable|t|temp|c|context)\.[a-z_][a-z0-9_]*$/i.test(t)) return;
 		setVariable(short(canon(t)), 0);
 		addingVar = '';
 	}
@@ -291,10 +298,10 @@
 				</div>
 			{/if}
 			<div class="adder pad">
-				<input class="ox-code" placeholder="v.name" aria-label="Add a variable" bind:value={addingVar} onkeydown={(e) => e.key === 'Enter' && addVariable()} />
+				<input class="ox-code" placeholder="v.name, t.name or c.name" aria-label="Add a variable" bind:value={addingVar} onkeydown={(e) => e.key === 'Enter' && addVariable()} />
 				<button class="btn" onclick={addVariable}>Add variable</button>
 			</div>
-			<p class="note pad">Handed over once, before creation_expression, like a Script API variable map. Pinned ones are written again before every update, which the game never does.</p>
+			<p class="note pad">Variables (v.) are handed over once, before creation_expression, like a Script API variable map. Temps (t.) go into the temp store all effects share just before the effect starts, as a parent's event leaves them before it spawns a child. Context values (c.) are there for every expression, as the caller supplies them; Molang can't set them. Pinned ones are written again before every update, which the game never does.</p>
 			<div class="pre pad">
 				<span>Pre-effect script</span>
 				<MolangText

@@ -43,3 +43,22 @@ describe('preview camera queries (measured in 1.26.52, t60-t64)', () => {
 		expect(ask('query.rotation_to_camera', 1)).toBeCloseTo(90);
 	});
 });
+
+describe('entity queries in the preview (measured, e07/e10/e11)', () => {
+	const make = (creation: string) => ({
+		...fx,
+		particle_effect: { ...fx.particle_effect, components: { ...fx.particle_effect.components, 'minecraft:emitter_initialization': { creation_expression: creation, per_update_expression: 'v.u = q.variant;' } } },
+	});
+	it('read 0 in the creation expression, their value elsewhere; q.position is the entity', () => {
+		const world = new ParticleWorld();
+		const entity = { position: [5, 1, 2] as [number, number, number], velocity: [0, 0, 0] as [number, number, number], yaw: 0 };
+		world.queries = new PreviewQueries({ override: (name) => (name === 'query.variant' ? 7 : undefined), timeOfDay: () => 0, lastDelta: () => 1 / 60, entity: () => entity });
+		const e = world.spawn(world.loadEffect(make('v.c = q.variant; v.y = q.position(1);')), { position: [5, 2.5, 2], context: 'entity', preEffect: 'v.p = q.variant;' });
+		world.step(1 / 60);
+		const v = (n: string) => e.vars[world.symbols.variable(`variable.${n}`)];
+		expect(v('c')).toBe(0);
+		expect(v('p')).toBe(7);
+		expect(v('u')).toBe(7);
+		expect(v('y')).toBe(1);
+	});
+});

@@ -41,6 +41,8 @@ export interface RunRequest {
 	parents: Record<string, string>;
 	/** other effects playing in the scene, by identifier (their text is in `effects`); null keeps the file's own scene */
 	extras: { effect: string; position: Vec3 }[] | null;
+	/** the entity it plays on (scene entity settings to change); null keeps the file's own */
+	entity: Record<string, unknown> | null;
 }
 
 export interface SampleStats {

@@ -85,6 +85,11 @@ about the entity an effect is attached to. The Context panel lists them all. Giv
 **scenarios** (for example "on fire" or "in water") to switch between them. Scenarios are stored in the file's
 `oxygen` block, which the game ignores.
 
+*Variables in* takes three kinds of name. Variables (`v.size`) are handed to the emitter once, before its
+`creation_expression`, like a Script API variable map. Temps (`t.size`) go into the temp store that all effects
+share, just before the effect starts, as a parent's event leaves them. Context values (`c.size`) are there for
+every expression to read; Molang can't set them. *Pin* writes a value again before every update.
+
 ## Events
 
 Events run when something happens: an emitter starts or ends, a time on the timeline is reached, a particle
@@ -131,8 +136,29 @@ copies the game's auto exposure: something glowing in view at night darkens ever
 ## The scene
 
 The Scene panel sets up the world around the effect: the ground and its height, blocks to collide with (paint
-them, fill a box or import a `.mcstructure`), and a stand-in entity that walks a path, for effects attached to
-mobs. These settings are saved in the file's `oxygen` block.
+them, fill a box or import a `.mcstructure`), and a stand-in entity for effects attached to mobs. These settings
+are saved in the file's `oxygen` block.
+
+### Effects on an entity
+
+Turn on *Spawn on it* to play the effect the way an animation or animation controller does on a mob. Then:
+
+- **Locator:** pick one, or *None* for the entity itself. *Import from a model* reads a `.geo.json` and takes its
+  locators, worked out through their bones the way the game does. *Add locator* makes one by hand, written like
+  a geometry file: an offset in pixels (16 to a block) on the model, whose front is -Z, and a rotation.
+- **Axes:** the viewport draws the axes the effect gets (X red, Y green, Z blue). On a locator the game flips
+  them: an unturned locator points X to the entity's left, Y down and Z behind it, so an effect that rises
+  without a locator falls on one. Without a locator X points to its right, Y up and Z behind it.
+- **Follows it:** off is `bind_to_actor: false`. The effect starts where the entity stands and stays there, or
+  at the world origin when it has a locator, as in the game.
+- **Movement and facing:** stand still facing any way, walk a circle, a line or a path, or bob. Effects follow,
+  but the game adds none of the entity's speed to their particles.
+- **Scale and size:** `minecraft:scale` and the collision box that `entity_aabb` fills.
+- **Goes away:** the entity despawns, or the controller state that played the effect ends, after some seconds.
+  Its emitters stop, and particles in its space vanish with it.
+
+Effects on an entity loop their looping emitters, and every emitter holds at most 1,000 particles, as anywhere
+else. See [how Oxygen matches the game](accuracy.md#effects-on-an-entity) for the rest.
 
 ## Testing in Minecraft (desktop app)
 

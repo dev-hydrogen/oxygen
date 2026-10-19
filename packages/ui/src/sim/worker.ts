@@ -4,7 +4,7 @@
 import { queryExists } from '@oxygen/metadata';
 import { BlockWorld } from '@oxygen/scene';
 import { ParticleWorld, type EffectDefinition, type Vec3 } from 'wintersky';
-import { applyPinned, scenarioQuery, type InputScene } from '../lib/inputs';
+import { applyPinned, scenarioQuery, writeScenarioGlobals, type InputScene } from '../lib/inputs';
 import { PreviewQueries } from '../lib/queries';
 import type { FrameInputs, FromSim, PackedArrays, RemoteFrame, SimSetup, ToSim } from './protocol';
 
@@ -57,6 +57,8 @@ function start(s: SimSetup) {
 		entity: () => inputs?.entity ?? null,
 	});
 	w.beforeUpdate = (ww) => applyPinned(ww, sc, scene(ww));
+	// the scenario's temps and context values, as the main thread's world got them when the effect spawned
+	writeScenarioGlobals(w, sc ?? null, scene(w));
 	world = w;
 }
 
@@ -118,9 +120,11 @@ self.onmessage = (ev: MessageEvent<ToSim>) => {
 				const w = world!;
 				// attached emitters follow the locator transform the main thread sends with every frame
 				const attach = () => ({
-					getTransform: () => inputs?.attachment ?? { position: [0, 0, 0] as Vec3, rotation: [0, 0, 0, 1] as [number, number, number, number], velocity: [0, 0, 0] as Vec3 },
-					alive: () => true,
+					getTransform: () => ({ position: inputs?.attachment?.position ?? ([0, 0, 0] as Vec3), rotation: inputs?.attachment?.rotation ?? ([0, 0, 0, 1] as [number, number, number, number]), velocity: [0, 0, 0] as Vec3 }),
+					alive: () => inputs?.attachment?.alive ?? true,
 					aabb: setup?.aabb ?? undefined,
+					scale: inputs?.attachment?.scale ?? 1,
+					entity: true,
 				});
 				w.adopt(m.emitters, resolve, attach);
 				break;

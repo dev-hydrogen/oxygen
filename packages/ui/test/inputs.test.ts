@@ -82,3 +82,51 @@ describe('number fields', () => {
 		expect(showNumber(1.23456, 2)).toBe('1.23');
 	});
 });
+
+describe('scenario temps', () => {
+	const fx = {
+		format_version: '1.10.0',
+		particle_effect: {
+			description: { identifier: 'test:temps', basic_render_parameters: { material: 'particles_alpha', texture: 't' } },
+			components: {
+				'minecraft:emitter_initialization': { creation_expression: 'v.got = t.size;' },
+				'minecraft:emitter_rate_instant': { num_particles: 1 },
+				'minecraft:emitter_lifetime_once': { active_time: 1 },
+				'minecraft:particle_lifetime_expression': { max_lifetime: 1 },
+			},
+		},
+	};
+	const sc: Scenario = { name: 'S', variables: { 't.size': 3, 'v.keep': 1 }, pinned: ['t.size'] };
+
+	it('go into the temp store before the spawn, not into the emitter', async () => {
+		const { ParticleWorld } = await import('wintersky');
+		const { writeScenarioGlobals, applyPinned } = await import('../src/lib/inputs');
+		expect(scenarioVariables(sc, scene())).toEqual({ 'v.keep': 1 });
+		const world = new ParticleWorld();
+		writeScenarioGlobals(world, sc, scene());
+		const e = world.spawn(world.loadEffect(fx), { position: [0, 0, 0], variables: scenarioVariables(sc, scene()) });
+		expect(e.vars[world.symbols.variable('variable.got')]).toBe(3);
+		// pinned temps are written again before every update
+		world.temps.set(world.symbols.temp('temp.size'), 9);
+		applyPinned(world, sc, scene());
+		expect(world.temps.get(world.symbols.temp('temp.size'))).toBe(3);
+	});
+
+	it('context values (c.x) go to the world, for every expression, and only the scenario’s', async () => {
+		const { ParticleWorld } = await import('wintersky');
+		const { writeScenarioGlobals, applyPinned } = await import('../src/lib/inputs');
+		const withContext: Scenario = { name: 'C', variables: { 'c.size': 2, 'context.Speed': 5 }, pinned: ['c.size'] };
+		expect(scenarioVariables(withContext, scene())).toEqual({});
+		const world = new ParticleWorld();
+		world.contexts[world.symbols.context('context.stale')] = 1;
+		writeScenarioGlobals(world, withContext, scene());
+		const json = structuredClone(fx);
+		json.particle_effect.components['minecraft:emitter_initialization'] = { creation_expression: 'v.got = c.size + c.speed;' };
+		const e = world.spawn(world.loadEffect(json), { position: [0, 0, 0] });
+		expect(e.vars[world.symbols.variable('variable.got')]).toBe(7);
+		expect(world.contexts[world.symbols.context('context.stale')]).toBeUndefined();
+		world.contexts[world.symbols.context('context.size')] = 9;
+		applyPinned(world, withContext, scene());
+		expect(world.contexts[world.symbols.context('context.size')]).toBe(2);
+	});
+});

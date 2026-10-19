@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ParticleWorld } from 'wintersky';
-import { BlockWorld, collisionBoxes, EntityDummy, readMcstructure, writeNbt, type NbtTag } from '../src/index';
+import { BlockWorld, collisionBoxes, DEFAULT_ENTITY, EntityDummy, locatorsFromGeometry, readEntity, readMcstructure, writeNbt, type EntitySettings, type Locator, type NbtTag } from '../src/index';
 
 describe('collision shapes', () => {
 	it('matches the in-game results of t17', () => {
@@ -77,18 +77,19 @@ describe('.mcstructure', () => {
 
 describe('entity stand-in', () => {
 	it('moves along a circle facing its direction of travel, with locators following', () => {
-		const e = new EntityDummy({ motion: { kind: 'circle', radius: 2, speed: 2 }, locator: 'head' });
+		const e = new EntityDummy({ motion: { kind: 'circle', radius: 2, speed: 2 }, locator: 'chest', locators: [{ name: 'chest', offset: [0, 24, 0] }] });
 		e.update(0.25);
 		const v = e.velocity;
 		const speed = Math.hypot(v[0], v[2]);
 		expect(speed).toBeCloseTo(2, 1);
-		const head = e.locatorPosition('head');
-		expect(head[1]).toBeCloseTo(1.62, 5);
+		expect(e.locatorPosition('chest')[1]).toBeCloseTo(1.5, 5);
 		const t = e.attachment().getTransform();
-		expect(t.position[1]).toBeCloseTo(1.62, 5);
-		// forward (+Z rotated by yaw) points along the velocity
+		expect(t.position[1]).toBeCloseTo(1.5, 5);
+		// the entity's velocity isn't handed to its emitters (e06, e11)
+		expect(t.velocity).toEqual([0, 0, 0]);
+		// Minecraft yaw: forward is (-sin, cos)
 		const yaw = (e.yaw * Math.PI) / 180;
-		const fwd = [Math.sin(yaw), Math.cos(yaw)];
+		const fwd = [-Math.sin(yaw), Math.cos(yaw)];
 		expect(fwd[0] * v[0] + fwd[1] * v[2]).toBeGreaterThan(0.9 * speed);
 	});
 
@@ -98,10 +99,10 @@ describe('entity stand-in', () => {
 			[4, 0, 0],
 			[4, 0, 4],
 		];
-		const loop = new EntityDummy({ motion: { kind: 'path', points, speed: 2, ends: 'loop' }, locator: 'root' });
+		const loop = new EntityDummy({ motion: { kind: 'path', points, speed: 2, ends: 'loop' }, locator: '' });
 		loop.update(1);
 		expect(loop.position[0]).toBeCloseTo(2, 5);
-		expect(loop.yaw).toBeCloseTo(90, 5); // heading +X
+		expect(loop.yaw).toBeCloseTo(270, 5); // heading +X (east)
 		loop.update(2.5); // 7 blocks in: on the second stretch, heading +Z
 		expect(loop.position).toEqual([4, 0, 3]);
 		expect(loop.yaw).toBeCloseTo(0, 5);
@@ -111,10 +112,113 @@ describe('entity stand-in', () => {
 		loop.update((8 + Math.hypot(4, 4)) / 2 - 3.55);
 		expect(loop.position[0]).toBeCloseTo(0, 5);
 		expect(loop.position[2]).toBeCloseTo(0, 5);
-		const back = new EntityDummy({ motion: { kind: 'path', points, speed: 2, ends: 'reverse' }, locator: 'root' });
+		const back = new EntityDummy({ motion: { kind: 'path', points, speed: 2, ends: 'reverse' }, locator: '' });
 		back.update(5); // 10 blocks: to the end (8) and 2 back
 		expect(back.position).toEqual([4, 0, 2]);
 		expect(back.yaw).toBeCloseTo(180, 5); // heading −Z
+	});
+
+	it('reads older scenes: made-up attachment points become model-space locators', () => {
+		const e = readEntity({ motion: { kind: 'still' }, locator: 'head', locatorFlipY: true } as never);
+		expect(e.locator).toBe('head');
+		expect(e.locators).toEqual([{ name: 'head', offset: [0, 25.92, -0] }]);
+		expect(readEntity({ motion: { kind: 'still' }, locator: 'root' }).locator).toBe('');
+		expect(readEntity({ v: 2, motion: { kind: 'still' }, locator: 'x', locators: [{ name: 'x', offset: [1, 2, 3] }] }).locators).toEqual([{ name: 'x', offset: [1, 2, 3] }]);
+	});
+});
+
+/** Axes measured in-game (X, Y, Z of the emitter in world coordinates), test pack e01–e05, entity at yaw 0 */
+describe('locator frames measured in-game', () => {
+	const close = (a: number[], b: number[]) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i], 2));
+	const on = (loc: Locator, settings: Partial<EntitySettings> = {}) => new EntityDummy({ ...DEFAULT_ENTITY, ...settings, locators: [loc], locator: loc.name }).frame();
+	const L = (name: string, offset: [number, number, number], rotation?: [number, number, number]): Locator => ({ name, offset, ...(rotation ? { rotation } : {}) });
+
+	it('without a locator: the entity frame, X west, Y up, Z north (e01 p1)', () => {
+		const f = new EntityDummy({ ...DEFAULT_ENTITY }).frame();
+		close(f.axes[0], [-1, 0, 0]);
+		close(f.axes[1], [0, 1, 0]);
+		close(f.axes[2], [0, 0, -1]);
+		expect(f.position).toEqual([0, 0, 0]);
+	});
+
+	it('a locator flips Y: X east, Y down, Z north; +X model units go east, +Z north (e01 p2–p4)', () => {
+		const f = on(L('up', [0, 24, 0]));
+		close(f.position, [0, 1.5, 0]);
+		close(f.axes[0], [1, 0, 0]);
+		close(f.axes[1], [0, -1, 0]);
+		close(f.axes[2], [0, 0, -1]);
+		close(on(L('off_x', [8, 24, 0])).position, [0.5, 1.5, 0]);
+		close(on(L('off_z', [0, 24, 8])).position, [0, 1.5, -0.5]);
+	});
+
+	it('locator rotations, alone and together (e01 p5–p8, e05 p1–p4)', () => {
+		const axes = (r: [number, number, number]) => on(L('r', [0, 24, 0], r)).axes;
+		close(axes([90, 0, 0]).flat(), [1, 0, 0, 0, 0, -1, 0, 1, 0]);
+		close(axes([0, 90, 0]).flat(), [0, 0, 1, 0, -1, 0, 1, 0, 0]);
+		close(axes([0, 0, 90]).flat(), [0, -1, 0, -1, 0, 0, 0, 0, -1]);
+		close(axes([0, 30, 0])[0], [0.87, 0, 0.5]);
+		close(axes([90, 90, 0]).flat(), [0, 0, 1, 1, 0, 0, 0, 1, 0]);
+		close(axes([90, 0, 90]).flat(), [0, -1, 0, 0, 0, -1, 1, 0, 0]);
+		close(axes([0, 90, 90]).flat(), [0, 0, 1, -1, 0, 0, 0, -1, 0]);
+		close(axes([30, 45, 60]).flat(), [0.35, -0.61, 0.71, -0.57, -0.74, -0.35, 0.74, -0.28, -0.61]);
+	});
+
+	it('the entity’s facing turns it all (e03: yaw 90 faces west)', () => {
+		const f = on(L('up', [0, 24, 0]), { yaw: 90 });
+		close(f.axes[0], [0, 0, 1]);
+		close(f.axes[2], [1, 0, 0]);
+		const plain = new EntityDummy({ ...DEFAULT_ENTITY, yaw: 90 }).frame();
+		close(plain.axes[0], [0, 0, -1]);
+		close(plain.axes[2], [1, 0, 0]);
+	});
+
+	it('locators on bones, through a geometry file (e02)', () => {
+		const geo = {
+			format_version: '1.16.0',
+			'minecraft:geometry': [
+				{
+					description: { identifier: 'geometry.rig' },
+					bones: [
+						{ name: 'root', pivot: [0, 0, 0] },
+						{ name: 'brx', parent: 'root', pivot: [0, 24, 0], rotation: [90, 0, 0], locators: { brx: [0, 24, 0], brx_off: [0, 24, 8] } },
+						{ name: 'bry', parent: 'root', pivot: [0, 24, 0], rotation: [0, 90, 0], locators: { bry_off: [8, 24, 0] } },
+						{ name: 'chain', parent: 'bry', pivot: [8, 24, 0], rotation: [90, 0, 0], locators: { chain: [8, 24, 0] } },
+						{ name: 'asc', parent: 'root', pivot: [0, 24, 0], locators: { asc_ign: { offset: [8, 32, 0], rotation: [0, 0, 0], ignore_inherited_scale: true } } },
+					],
+				},
+			],
+		};
+		const [model] = locatorsFromGeometry(geo);
+		expect(model.model).toBe('geometry.rig');
+		const find = (n: string) => model.locators.find((l) => l.name === n)!;
+		close(on(find('brx')).axes.flat(), [1, 0, 0, 0, 0, -1, 0, 1, 0]); // like the [90,0,0] locator
+		close(on(find('brx_off')).position, [0, 2, 0]); // 8 units +Z turned up
+		close(on(find('bry_off')).position, [0, 1.5, 0.5]);
+		close(on(find('chain')).position, [0, 1.5, 0.5]);
+		close(on(find('chain')).axes.flat(), [0, 0, 1, 1, 0, 0, 0, 1, 0]);
+		expect(find('asc_ign').ignoreScale).toBe(true);
+	});
+
+	it('scale: the entity scales locator offsets and frames, not its own frame (e05 p6/p8, e10 p7)', () => {
+		const f = on(L('up', [0, 24, 0]), { scale: 2 });
+		close(f.position, [0, 3, 0]);
+		expect(f.scale).toBe(2);
+		expect(on({ name: 'i', offset: [8, 32, 0], ignoreScale: true }, { scale: 2 }).scale).toBe(1);
+		expect(new EntityDummy({ ...DEFAULT_ENTITY, scale: 2 }).frame().scale).toBe(1);
+	});
+
+	it('entity_aabb is the entity’s box in the emitter’s frame, not moved back around the entity (e09)', () => {
+		const e = new EntityDummy({ ...DEFAULT_ENTITY, locators: [L('up', [0, 24, 0])], locator: 'up' });
+		expect(e.aabb()).toEqual({ min: [-0.3, 0, -0.3], max: [0.3, 1.8, 0.3] });
+		const big = new EntityDummy({ ...DEFAULT_ENTITY, scale: 2 });
+		expect(big.aabb()).toEqual({ min: [-0.6, 0, -0.6], max: [0.6, 3.6, 0.6] });
+	});
+
+	it('unbound effects start at the entity, or at the world origin with a locator (e10, e12)', () => {
+		const e = new EntityDummy({ ...DEFAULT_ENTITY, motion: { kind: 'line', length: 4, speed: 2 }, locators: [L('up', [0, 24, 0])] });
+		e.update(0.5);
+		expect(e.unboundStart('').position).toEqual(e.position);
+		expect(e.unboundStart('up').position).toEqual([0, 0, 0]);
 	});
 });
 

@@ -1,5 +1,6 @@
 import type { Value } from 'molangjs';
 import type { ParticleWorld, QueryContext, QueryProvider, Vec3 } from 'wintersky';
+import { getQuery } from '@oxygen/metadata';
 import { callSignature } from './inputs';
 
 export interface PreviewQueryOptions {
@@ -27,13 +28,23 @@ export class PreviewQueries implements QueryProvider {
 	constructor(private o: PreviewQueryOptions) {}
 
 	resolve(name: string, args: Value[], ctx: QueryContext): Value | undefined {
-		const v = this.o.override(name, args, ctx.world) ?? this.live(name, args, ctx);
+		const v = this.creationBlind(name, ctx) ? 0 : (this.o.override(name, args, ctx.world) ?? this.live(name, args, ctx));
 		if (this.recording) {
 			// calls with ever-changing arguments (q.position(v.particle_age)) would grow this without end
 			if (this.last.size > 512) this.last.clear();
 			this.last.set(callSignature(name, args), v);
 		}
 		return v;
+	}
+
+	/**
+	 * An emitter on an entity can't see the entity's queries yet in its creation expression: they read 0 there,
+	 * though pre_effect_script and the update expression see them (e07, e10).
+	 */
+	private creationBlind(name: string, ctx: QueryContext): boolean {
+		if (ctx.emitter.rootContext !== 'entity') return false;
+		const c = ctx.world.current;
+		return c.phase === 'creation' && c.path.endsWith('/creation_expression') && getQuery(name)?.context === 'entity';
 	}
 
 	private live(name: string, args: Value[], ctx: QueryContext): Value | undefined {
@@ -72,10 +83,15 @@ export class PreviewQueries implements QueryProvider {
 				while (i < args.length && dist > n(i)) i++;
 				return i;
 			}
-			case 'query.position':
-				return e.position[Math.max(0, Math.min(2, n(0)))];
-			case 'query.position_delta':
-				return e.velocity[Math.max(0, Math.min(2, n(0)))] * this.o.lastDelta();
+			case 'query.position': {
+				// on an entity: where the entity stands, not the locator (e07, e11)
+				const a = e.rootContext === 'entity' ? this.o.entity() : null;
+				return (a ?? e).position[Math.max(0, Math.min(2, n(0)))];
+			}
+			case 'query.position_delta': {
+				const a = e.rootContext === 'entity' ? this.o.entity() : null;
+				return (a ?? e).velocity[Math.max(0, Math.min(2, n(0)))] * this.o.lastDelta();
+			}
 			case 'query.delta_time':
 			case 'query.last_frame_time':
 			case 'query.average_frame_time':

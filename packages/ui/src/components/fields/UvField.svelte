@@ -7,6 +7,7 @@
 	import NumberInput from './NumberInput.svelte';
 	import Select from './Select.svelte';
 	import Toggle from './Toggle.svelte';
+	import UvThumb from './UvThumb.svelte';
 	import VecInput from './VecInput.svelte';
 
 	interface Props {
@@ -47,16 +48,21 @@
 </script>
 
 <div class="uv">
-	<Select
-		value={mode}
-		label="{label} kind"
-		options={[
-			{ value: 'whole', label: 'Whole texture' },
-			{ value: 'area', label: 'Texture area' },
-			{ value: 'flipbook', label: 'Flipbook' },
-		]}
-		onchange={setMode}
-	/>
+	<div class="top">
+		<div class="kind">
+			<Select
+				value={mode}
+				label="{label} kind"
+				options={[
+					{ value: 'whole', label: 'Whole texture' },
+					{ value: 'area', label: 'Texture area' },
+					{ value: 'flipbook', label: 'Flipbook' },
+				]}
+				onchange={setMode}
+			/>
+		</div>
+		<UvThumb {session} {uv} />
+	</div>
 	{#if uv}
 		<div class="pair">
 			<span class="sub">Texture</span>
@@ -113,6 +119,16 @@
 		display: flex;
 		flex-direction: column;
 		gap: 3px;
+		flex: 1;
+		min-width: 0;
+	}
+	.top {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		min-width: 0;
+	}
+	.kind {
 		flex: 1;
 		min-width: 0;
 	}

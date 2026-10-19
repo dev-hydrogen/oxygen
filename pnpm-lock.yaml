@@ -242,6 +242,9 @@ importers:
       '@oxygen/metadata':
         specifier: workspace:*
         version: link:../../packages/metadata
+      '@oxygen/scene':
+        specifier: workspace:*
+        version: link:../../packages/scene
       '@oxygen/testpack':
         specifier: workspace:*
         version: link:../../packages/testpack

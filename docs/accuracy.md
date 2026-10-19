@@ -107,6 +107,34 @@ emissive particles at night.
 - A resource pack has to opt in (`"capabilities": ["pbr"]` in its manifest), or the game turns Vibrant Visuals
   off while the pack is active.
 
+## Effects on an entity
+
+Measured with a test entity whose bones and locators are rotated, animated and scaled (`e01`–`e12` in the test
+pack):
+
+- **A locator flips the effect's Y axis.** Without a locator an effect sits at the entity's feet with X to its
+  right, Y up and Z behind it. On an unturned locator Y points down and X to the entity's left. It's a half turn,
+  not a mirror, so an emitter shooting up shoots down, and one shooting right shoots left.
+- **Locators follow their bones,** through every parent, with rotations in the geometry file's order (X, then Y,
+  then Z). The locator's own rotation turns the effect the same way.
+- **The entity's scale** grows locator offsets and the effect on a locator, but not how fast its particles go.
+  `ignore_inherited_scale` keeps the effect's size but not the locator's position.
+- **The entity's movement adds nothing** to its particles, even with `emitter_local_space` velocity on.
+- **World-space effects on an entity measure `relative_position` from the world origin,** not from the emitter.
+- **`bind_to_actor: false`** starts the effect where the entity stands, or at the world origin when it has a
+  locator.
+- **`entity_aabb`** fills the entity's collision box placed at the emitter, in the emitter's axes. On a locator
+  it hangs down from the locator.
+- **Entity queries** (`q.variant`, `q.property`) work in an entity's effects, except in the emitter's creation
+  expression, where they read 0. `q.position` is where the entity stands, not the locator. The entity's own
+  variables aren't visible.
+- **At most 1,000 particles per emitter,** bursts and steady rates alike. Creators had reported 10,000.
+- **When the entity goes away,** or the controller state that played the effect ends, its emitters stop and
+  particles in its space vanish. World-space particles carry on. An emitter outlives the animation that fired it.
+  A looping animation fires a new emitter on each pass.
+
+Oxygen's stand-in entity does all of this with the model at rest; it doesn't play the entity's animations.
+
 ## Camera queries
 
 For effects started with `/particle` or a script, `q.distance_from_camera` follows the camera, but
@@ -119,7 +147,6 @@ reports for these:
 
 - How a looping emitter played by an entity restarts. Oxygen treats each loop as a fresh emitter whose old
   particles live on.
-- The 10,000 particle cap for entity emitters.
 - How an emitter bound to its parent follows a moving, turning parent.
 - Some rarely used maths functions and easing curves.
 

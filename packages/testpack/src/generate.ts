@@ -1,6 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ENTITY_TESTS, RIG_EFFECTS, rigBehavior, rigClient, rigGeometry, rigProbes, rigTexture } from './entity';
 import { MARKERS, TESTS, probeCurves, probeEvents, type Json, type TestCase } from './tests';
 import { testTextureSets, testTextures } from './textures';
 
@@ -28,7 +29,7 @@ export function rowZ(index: number) {
 	return (index + 1) * LAYOUT.rowSpacing;
 }
 
-export function cameraFor(test: TestCase, index: number, view: 'front' | 'behind' | 'above' | 'frontleft' | 'frontright' | 'away') {
+export function cameraFor(test: { probes: unknown[]; spacing?: number }, index: number, view: 'front' | 'behind' | 'above' | 'frontleft' | 'frontright' | 'away') {
 	const n = test.probes.length;
 	const spacing = test.spacing ?? LAYOUT.probeSpacing;
 	const cx = ((n - 1) * spacing) / 2;
@@ -163,6 +164,42 @@ export function generate(outDir: string) {
 		}
 		all.push(`function oxygen/${test.id}`);
 	});
+	// entity tests: the rig and its effects, one row each after the particle tests
+	for (const [name, fx] of Object.entries(RIG_EFFECTS)) {
+		const json = structuredClone(fx) as Json;
+		json.particle_effect.description.identifier = `oxygen:rig_${name}`;
+		writeJson(join(rp, 'particles', `rig_${name}.json`), json);
+	}
+	writeJson(join(rp, 'models', 'entity', 'oxygen_rig.geo.json'), rigGeometry());
+	const client = rigClient();
+	writeJson(join(rp, 'entity', 'oxygen_rig.entity.json'), client.entity);
+	writeJson(join(rp, 'animations', 'oxygen_rig.animation.json'), client.animations);
+	writeJson(join(rp, 'animation_controllers', 'oxygen_rig.animation_controllers.json'), client.controllers);
+	writeJson(join(rp, 'render_controllers', 'oxygen_rig.render_controllers.json'), client.renderController);
+	mkdirSync(join(rp, 'textures', 'entity'), { recursive: true });
+	writeFileSync(join(rp, 'textures', 'entity', 'oxygen_rig.png'), rigTexture());
+	writeJson(join(bp, 'entities', 'oxygen_rig.json'), rigBehavior());
+	const variants = new Map(rigProbes().map((r) => [r.probe, r.variant]));
+	ENTITY_TESTS.forEach((test, k) => {
+		const index = TESTS.length + k;
+		const z = rowZ(index);
+		const spacing = test.spacing ?? LAYOUT.probeSpacing;
+		const fn: string[] = [`# ${test.id}: ${test.title}`, cameraFor(test, index, 'front'), 'event entity @e[type=oxygen:rig] oxygen:despawn'];
+		checklist.push(`## ${test.id} — ${test.title}`, '', `**Question:** ${test.question}`, '', `**Engine assumption:** ${test.assumption}`, '', `Wait ${test.wait}s, then screenshot.`, '');
+		test.probes.forEach((p, j) => {
+			const x = j * spacing;
+			const v = variants.get(p)!;
+			fn.push(`setblock ${x} ${LAYOUT.floorY} ${z} ${MARKERS[j % MARKERS.length]}_wool`);
+			fn.push(`summon oxygen:rig ${x} ${LAYOUT.floorY + 1} ${z} ${p.yaw ?? 0} 0 oxygen:v${v}`);
+			if (p.move) fn.push(`scriptevent oxygen:move ${JSON.stringify({ variant: v, ...p.move })}`);
+			for (const l of p.later ?? []) fn.push(`scriptevent oxygen:later ${JSON.stringify({ variant: v, after: l.after, command: l.command })}`);
+			checklist.push(`- **${p.id}** (${MARKERS[j % MARKERS.length]}): ${p.reads}`);
+		});
+		checklist.push('');
+		writeFileSync(join(bp, 'functions', 'oxygen', `${test.id}.mcfunction`), fn.join('\n') + '\n');
+		writeFileSync(join(bp, 'functions', 'oxygen', `${test.id}_cam.mcfunction`), cameraFor(test, index, 'front') + '\n');
+		for (const view of test.views ?? []) writeFileSync(join(bp, 'functions', 'oxygen', `${test.id}_${view}.mcfunction`), cameraFor(test, index, view) + '\n');
+	});
 	mkdirSync(join(bp, 'functions', 'oxygen'), { recursive: true });
 	writeFileSync(join(bp, 'functions', 'oxygen', 'setup.mcfunction'), setup.join('\n') + '\n');
 	writeFileSync(join(bp, 'functions', 'oxygen', 'all.mcfunction'), all.join('\n') + '\n');
@@ -188,6 +225,69 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
 
 // /scriptevent oxygen:look_away {"after":1,"seconds":3,"away":"tp @s …","back":"tp @s …"}: turn the player who ran
 // it away from the probes and back again on game ticks (emitter culling tests)
+// the rig with a given variant (entity tests)
+function rig(variant) {
+	return world.getDimension('overworld').getEntities({ type: 'oxygen:rig' }).find((e) => e.getComponent('minecraft:variant')?.value === variant);
+}
+
+// /scriptevent oxygen:move {"variant":3,"kind":"circle","radius":2,"speed":2,"after":0,"seconds":20}: move a rig on
+// game ticks (circle and line teleport it, facing the way it goes; push gives it one impulse along +X)
+system.afterEvents.scriptEventReceive.subscribe((event) => {
+	if (event.id !== 'oxygen:move') return;
+	try {
+		const m = JSON.parse(event.message);
+		const start = system.currentTick + Math.round((m.after ?? 0) * 20);
+		const end = start + Math.round((m.seconds ?? 20) * 20);
+		let origin = null;
+		const id = system.runInterval(() => {
+			const e = rig(m.variant);
+			const tick = system.currentTick;
+			if (!e || tick > end) return system.clearRun(id);
+			if (tick < start) return;
+			if (!origin) origin = { ...e.location };
+			const t = (tick - start) / 20;
+			const speed = m.speed ?? 2;
+			if (m.kind === 'drive') {
+				// a real velocity (blocks per tick) the game moves it by
+				e.clearVelocity();
+				e.applyImpulse({ x: speed / 20, y: 0, z: 0 });
+				return;
+			}
+			if (m.kind === 'push') {
+				if (tick === start) e.applyImpulse({ x: speed, y: 0, z: 0 });
+				return;
+			}
+			if (m.kind === 'circle') {
+				const r = m.radius ?? 2;
+				const a = (t * speed) / r;
+				// starts at the origin, heading +X... round a centre at origin + (0, 0, r)
+				const pos = { x: origin.x + Math.sin(a) * r, y: origin.y, z: origin.z + r - Math.cos(a) * r };
+				const yaw = -((a * 180) / Math.PI) - 90;
+				e.teleport(pos, { rotation: { x: 0, y: yaw } });
+			} else {
+				const len = m.radius ?? 4;
+				const period = (2 * len) / speed;
+				const p = (t % period) / period;
+				const s = p < 0.5 ? p * 2 : 2 - p * 2;
+				e.teleport({ x: origin.x + s * len, y: origin.y, z: origin.z }, { rotation: { x: 0, y: p < 0.5 ? -90 : 90 } });
+			}
+		}, 1);
+	} catch (error) {
+		console.warn('oxygen:move failed: ' + error);
+	}
+});
+
+// /scriptevent oxygen:later {"variant":3,"after":2,"command":"..."}: run a command as the rig after a delay
+system.afterEvents.scriptEventReceive.subscribe((event) => {
+	if (event.id !== 'oxygen:later') return;
+	try {
+		const m = JSON.parse(event.message);
+		system.runTimeout(() => rig(m.variant)?.runCommand(m.command), Math.round(m.after * 20));
+	} catch (error) {
+		console.warn('oxygen:later failed: ' + error);
+	}
+});
+
 system.afterEvents.scriptEventReceive.subscribe((event) => {
 	if (event.id !== 'oxygen:look_away' || !event.sourceEntity) return;
 	try {

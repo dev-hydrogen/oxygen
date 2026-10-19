@@ -2,7 +2,7 @@
 	import type { GameLink, GameStatus } from '../../host';
 	import type { Workspace } from '../../state/workspace.svelte';
 	import { flushEdits } from '../../lib/flush';
-	import { scenarioVariables } from '../../lib/inputs';
+	import { isContextKey, isTempKey, scenarioVariables } from '../../lib/inputs';
 
 	interface Props {
 		workspace: Workspace;
@@ -43,6 +43,8 @@
 			if (typeof v === 'number') vars[k] = v;
 			else dropped.push(k);
 		}
+		// temps live in the game's shared store and context values come from the caller; a script's variable map can set neither
+		for (const k of Object.keys(sc.variables ?? {})) if (isTempKey(k) || isContextKey(k)) dropped.push(k);
 		return { vars: Object.keys(vars).length ? vars : undefined, dropped };
 	}
 

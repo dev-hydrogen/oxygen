@@ -41,7 +41,7 @@ export function analyze(path: string, text: string, spawn: SpawnMode = 'command'
 	const external: Record<string, string> = {};
 	const meta = readMeta(doc);
 	const sc = (meta.activeScenario && meta.scenarios?.find((s) => s.name === meta.activeScenario)) || null;
-	for (const k of Object.keys(sc?.variables ?? {})) external[canonicalVar(k)] = `scenario “${sc!.name}”`;
+	for (const k of Object.keys(sc?.variables ?? {})) if (!/^(t|temp|c|context)\./i.test(k)) external[canonicalVar(k)] = `scenario “${sc!.name}”`;
 	if (sc?.preEffect) for (const m of sc.preEffect.matchAll(/\b(?:v|variable)\.([a-z_][a-z0-9_]*)\s*=(?!=)/gi)) external[`variable.${m[1].toLowerCase()}`] = `scenario “${sc.name}” pre-effect`;
 	const mode = sc?.spawn ?? spawn;
 	const analysis = analyzeEffect(def, { external, parents, cap: world.options.particleCap[mode as SpawnContext], spawnContext: mode });
