@@ -990,8 +990,11 @@ function runtimeMessage(code: string, detail?: string): string {
 			return 'Division by zero evaluated to 0';
 		case 'string-math':
 			return 'A string was used in arithmetic';
-		case 'unknown-query':
-			return `Query ${detail ?? ''} has no value in this preview`;
+		case 'unknown-query': {
+			// `query.x|why`: the preview's reason, when it has one
+			const [name, why] = (detail ?? '').split('|');
+			return why ? `Query ${name} has no value in this preview: ${why}` : `Query ${name} has no value in this preview`;
+		}
 		case 'cap':
 			return `Reached the live particle cap: ${detail ?? ''}`;
 		case 'missing-effect':

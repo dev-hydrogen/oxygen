@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CATEGORIES, COMPONENT_BY_ID, COMPONENTS, MATERIALS, PHASES, type FieldKind } from '@oxygen/format';
-import { getQuery, molangMetadata } from '@oxygen/metadata';
+import { getQuery, molangMetadata, queryExists, queryUnavailable } from '@oxygen/metadata';
 import { ENTITY_TESTS, TESTS } from '@oxygen/testpack';
 import measured from '../../../packages/testpack/fixtures/ingame-1.26.52.json';
 import { BUNDLED } from './pack';
@@ -61,7 +61,7 @@ function measurements(search: string | null): string {
 	const s = search?.toLowerCase() ?? '';
 	const lines = [`Measured in Minecraft ${measured.game} (${measured.date}); Oxygen's engine reproduces every result (on an entity, with its model at rest: Oxygen doesn't play entity animations). What the content log reports at load:`, ...measured.loadLog.map((l: string) => `- ${l}`)];
 	for (const t of [...TESTS, ...ENTITY_TESTS]) {
-		const conclusion = results[t.id]?.conclusion ?? '(not recorded)';
+		const conclusion = results[t.id]?.conclusion ?? `not measured yet. Oxygen's assumption: ${t.assumption}`;
 		if (s && !`${t.id} ${t.title} ${t.question} ${conclusion}`.toLowerCase().includes(s)) continue;
 		lines.push('', `${t.id}. ${t.title}`, `Question: ${t.question}`, `Measured: ${conclusion}`);
 	}
@@ -94,13 +94,15 @@ export function reference(topic: string, search: string | null): string {
 	if (lower === 'math') return ['Math functions:', ...molangMetadata.math.map((m) => `- ${m.name}(${m.params.join(', ')}): ${m.description}`)].join('\n');
 	if (lower === 'queries') {
 		const s = search?.toLowerCase() ?? '';
-		const found = molangMetadata.queries.filter((q) => !q.lastVersion && (!s || q.name.includes(s) || q.description.toLowerCase().includes(s)));
+		const found = molangMetadata.queries.filter((q) => !q.lastVersion && queryExists(q.name) && (!s || q.name.includes(s) || q.description.toLowerCase().includes(s)));
 		// most queries describe entities; a particle emitter spawned by /particle or a script has none
 		const lines = [`${found.length} queries${s ? ` matching "${s}"` : ''}. "entity" ones need an emitter attached to an entity; with /particle they read 0.`];
 		for (const q of found) lines.push(`- ${q.name}${q.context === 'entity' ? ' [entity]' : ''}: ${q.description.split(/(?<=\.)\s/)[0]}`);
 		return lines.join('\n');
 	}
 	const q = getQuery(t);
+	const unusable = q ? queryUnavailable(q.name) : null;
+	if (q && unusable) return [`${q.name} → ${q.returnType}`, q.description, `${unusable}. Going by the game's metadata it's a load error there, so the field falls back to its default (in-game test t66).`].join('\n');
 	if (q) return [`${q.name} → ${q.returnType}`, q.description, `Arguments: ${q.minArgs}${q.maxArgs !== q.minArgs ? `–${q.maxArgs ?? 'any'}` : ''}. Context: ${q.context === 'entity' ? 'needs an emitter attached to an entity' : 'any emitter'}. Since ${q.firstVersion}${q.lastVersion ? `, removed after ${q.lastVersion}` : ''}.`].join('\n');
 	const guide = GUIDES[lower];
 	if (guide) {

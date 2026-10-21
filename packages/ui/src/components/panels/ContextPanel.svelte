@@ -5,6 +5,9 @@
 	import type { Workspace } from '../../state/workspace.svelte';
 	import { PHASE_VAR } from '../../lib/molang-text';
 	import { queryInputType } from '../../lib/inputs';
+	import { splitMember } from '../../lib/queries';
+	import { showNumber } from '../../lib/numbers';
+	import { STRUCT_QUERIES } from 'molangjs';
 	import InputEditor from '../context/InputEditor.svelte';
 	import ScrubNumber from '../fields/ScrubNumber.svelte';
 	import MolangText from '../fields/MolangText.svelte';
@@ -63,15 +66,29 @@
 		s.queries.recording = true;
 		return () => (s.queries.recording = false);
 	});
+	/** what the preview used last for a call; a struct query (q.bone_origin) has a value per member, given as text */
 	function liveQuery(signature: string) {
 		void tick;
-		return session?.queries.last.get(signature);
+		return session?.queries.last.get(signature) ?? structLive(signature);
+	}
+	function structLive(signature: string): string | undefined {
+		void tick;
+		const last = session?.queries.last;
+		const open = signature.indexOf('(');
+		const members = STRUCT_QUERIES[signature.slice(0, open)];
+		if (!last || !members) return undefined;
+		const values = members.map((m) => last.get(`${signature.slice(0, open)}.${m}${signature.slice(open)}`));
+		if (values.every((v) => v === undefined)) return undefined;
+		return members.map((m, i) => `${m} ${typeof values[i] === 'number' ? showNumber(values[i] as number, 3) : '–'}`).join(', ');
 	}
 	function seenArgs(name: string): string[] {
 		void tick;
-		const out: string[] = [];
-		for (const sig of session?.queries.last.keys() ?? []) if (sig.startsWith(`${name}(`)) out.push(sig.slice(name.length + 1, -1));
-		return out.sort();
+		const out = new Set<string>();
+		for (const sig of session?.queries.last.keys() ?? []) {
+			// a struct query's calls are recorded per member: q.bone_origin.x('head')
+			if (sig.startsWith(`${name}(`) || (STRUCT_QUERIES[name] && sig.startsWith(`${name}.`))) out.add(sig.slice(sig.indexOf('(') + 1, -1));
+		}
+		return [...out].sort();
 	}
 	function liveVar(name: string) {
 		void tick;
@@ -129,13 +146,17 @@
 	const numeric = $derived(inputNames.filter((n) => typeof variableInput(n) === 'number'));
 	let allValue = $state<number | null>(null);
 
-	/** Change every plain-number variable at once (one undo step) */
-	function changeAll(f: (v: number) => number, label: string) {
-		if (!numeric.length) return;
+	/** queries set to a plain number */
+	const numericQueries = $derived(Object.keys(active?.queries ?? {}).filter((k) => typeof active?.queries?.[k] === 'number'));
+	let allQueryValue = $state<number | null>(null);
+
+	/** Change every plain-number variable (or query) at once (one undo step) */
+	function changeAll(f: (v: number) => number, label: string, field: 'variables' | 'queries' = 'variables') {
+		if (!(field === 'variables' ? numeric : numericQueries).length) return;
 		update((s) => {
-			const vars = { ...(s.variables ?? {}) };
-			for (const k of Object.keys(vars)) if (typeof vars[k] === 'number') vars[k] = Math.round(f(vars[k] as number) * 1e6) / 1e6;
-			return { ...s, variables: vars };
+			const vals = { ...(s[field] ?? {}) };
+			for (const k of Object.keys(vals)) if (typeof vals[k] === 'number') vals[k] = Math.round(f(vals[k] as number) * 1e6) / 1e6;
+			return { ...s, [field]: vals };
 		}, label);
 	}
 	const stepOf = (e: MouseEvent) => (e.shiftKey ? 1 : e.altKey ? 0.01 : 0.1);
@@ -191,11 +212,36 @@
 	function addQuery() {
 		const t = addingQuery.trim().replace(/^q\./i, 'query.');
 		const name = t.replace(/\(.*$/, '').toLowerCase();
-		const info = getQuery(name);
+		// one member of a struct query can have its own value: q.bone_origin.y('head')
+		const info = getQuery(splitMember(name)[0]);
 		if (!info) return;
 		setQuery(t.includes('(') ? name + t.slice(t.indexOf('(')) : name, queryInputType(info.returnType) === 'string' ? '' : 0);
 		addingQuery = '';
 	}
+	/** queries the scenario doesn't set and the scene didn't answer last time (they read 0.0) */
+	const unsuppliedQueries = $derived.by(() => {
+		void tick;
+		const out: string[] = [];
+		for (const q of queries) {
+			const key = queryKey(q);
+			if (active?.queries?.[key] !== undefined) continue;
+			const sigs = key === q.name ? seenArgs(q.name).map((a) => `${q.name}(${a})`) : [q.signature];
+			if (sigs.every((s) => liveQuery(s) === undefined)) out.push(key);
+		}
+		return out;
+	});
+
+	/** Give every query nothing supplies the same value (one undo step) */
+	function fillUnsupplied(value: number | string) {
+		const keys = unsuppliedQueries;
+		if (!keys.length) return;
+		update((s) => ({ ...s, queries: { ...(s.queries ?? {}), ...Object.fromEntries(keys.map((k) => [k, value])) } }), 'Fill scenario queries');
+	}
+
+	function clearQueries() {
+		update((s) => ({ ...s, queries: undefined }), 'Clear scenario queries');
+	}
+
 	/** queries set in the scenario that the effect doesn't call (or calls differently) */
 	const extraQueries = $derived(Object.keys(active?.queries ?? {}).filter((k) => !queries.some((q) => queryKey(q) === k)));
 
@@ -315,7 +361,20 @@
 		</section>
 
 		<section>
-			<div class="head"><h3>Queries</h3><span class="dim ox-num">{queries.length + extraQueries.length}</span></div>
+			<div class="head">
+				<h3>Queries</h3>
+				<span class="dim ox-num">{queries.length + extraQueries.length}</span>
+				<span class="spacer"></span>
+				{#if unsuppliedQueries.length}
+					<span class="dim">Fill {unsuppliedQueries.length} unsupplied with</span>
+					<button class="btn ox-num" title="Every query nothing supplies gets 0" onclick={() => fillUnsupplied(0)}>0</button>
+					<button class="btn ox-num" title="Every query nothing supplies gets 1" onclick={() => fillUnsupplied(1)}>1</button>
+					<button class="btn ox-code" title="Every query nothing supplies gets an empty string" onclick={() => fillUnsupplied('')}>''</button>
+				{/if}
+				{#if queries.length || extraQueries.length}
+					<button class="btn" disabled={!active?.queries} title="Remove every query value set here" onclick={clearQueries}>Clear</button>
+				{/if}
+			</div>
 			{#each queries as q (q.signature)}
 				{@const key = queryKey(q)}
 				{@const info = getQuery(q.name)}
@@ -326,6 +385,7 @@
 					dynamic={key === q.name}
 					value={active?.queries?.[key]}
 					live={key === q.name ? undefined : liveQuery(q.signature)}
+					liveText={key === q.name ? undefined : structLive(q.signature)}
 					seenArgs={key === q.name ? seenArgs(q.name) : []}
 					description={info?.description}
 					onchange={(v) => setQuery(key, v)}
@@ -339,15 +399,31 @@
 				<InputEditor
 					name={key.replace(/^query\./, 'q.')}
 					kind="query"
-					type={queryInputType(getQuery(name)?.returnType)}
+					type={queryInputType(getQuery(splitMember(name)[0])?.returnType)}
 					dynamic={!key.includes('(')}
 					value={active?.queries?.[key]}
 					live={liveQuery(key)}
+					liveText={structLive(key)}
 					seenArgs={seenArgs(name)}
-					description={getQuery(name)?.description}
+					description={getQuery(splitMember(name)[0])?.description}
 					onchange={(v) => setQuery(key, v)}
 				/>
 			{/each}
+			{#if numericQueries.length > 1}
+				<div class="allrow pad">
+					<span class="dim">All {numericQueries.length} numbers</span>
+					<span class="allset">
+						<ScrubNumber label="Set every query number to" value={allQueryValue} allowEmpty placeholder="set to…" onchange={(n) => {
+							allQueryValue = n;
+							if (n !== null) changeAll(() => n, 'Set scenario query numbers', 'queries');
+						}} />
+					</span>
+					<button class="btn ox-num" title="Lower every number by 0.1 (Shift 1, Alt 0.01)" onclick={(e) => changeAll((v) => v - stepOf(e), 'Nudge scenario query numbers', 'queries')}>−</button>
+					<button class="btn ox-num" title="Raise every number by 0.1 (Shift 1, Alt 0.01)" onclick={(e) => changeAll((v) => v + stepOf(e), 'Nudge scenario query numbers', 'queries')}>+</button>
+					<button class="btn ox-num" title="Halve every number" onclick={() => changeAll((v) => v / 2, 'Scale scenario query numbers', 'queries')}>×½</button>
+					<button class="btn ox-num" title="Double every number" onclick={() => changeAll((v) => v * 2, 'Scale scenario query numbers', 'queries')}>×2</button>
+				</div>
+			{/if}
 			<div class="adder pad">
 				<input class="ox-code" placeholder="q.property('ns:name')" aria-label="Add a query value" bind:value={addingQuery} onkeydown={(e) => e.key === 'Enter' && addQuery()} />
 				<button class="btn" onclick={addQuery}>Add query</button>

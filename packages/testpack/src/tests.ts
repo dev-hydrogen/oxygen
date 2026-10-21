@@ -343,7 +343,7 @@ export const TESTS: TestCase[] = [
 		id: 't14',
 		title: 'Direction facing modes',
 		question: 'How do direction_x/y/z orient the arrow texture, including straight up and below min_speed?',
-		assumption: 'Skill axis table; fallback axis near vertical; derive_from_velocity keeps the previous facing below the threshold.',
+		assumption: 'The documented axis table; fallback axis near vertical; derive_from_velocity keeps the previous facing below the threshold.',
 		wait: 2,
 		views: ['front', 'above'],
 		probes: [
@@ -685,7 +685,7 @@ export const TESTS: TestCase[] = [
 		id: `t${34 + k}`,
 		title: `${mode} axis matrix`,
 		question: `How does ${mode} orient the arrow texture for each axis direction?`,
-		assumption: 'Skill axis table with a vertical fallback.',
+		assumption: 'The documented axis table with a vertical fallback.',
 		wait: 1.5,
 		views: ['front', 'behind', 'above', 'frontleft', 'frontright'] as ('front' | 'behind' | 'above' | 'frontleft' | 'frontright')[],
 		spacing: 3,
@@ -1361,7 +1361,427 @@ export const TESTS: TestCase[] = [
 			{ id: 'v8', reads: 'Colour of the centre: unlit, alpha, dark 64.', effect: probe({}, { size: 0.4, material: 'particles_alpha', texture: 'textures/particle/oxygen_dark', lifetime: 600, activeTime: 600 }) },
 		],
 	},
+	{
+		id: 't66',
+		title: 'Queries from other query sets',
+		question: "Can particle Molang use the queries the game's metadata puts in its world_gen and tags sets (q.heightmap, q.above_top_solid, q.noise, the biome tags, q.any_tag)?",
+		assumption:
+			"No: like an unknown query, each is a load error ('not supported in this context') and its field falls back to its default (billboard size 1: a big square). If instead they run, the square is 0.3 (or 0.1). Read the content log for g9's unused event.",
+		wait: 2,
+		probes: [
+			{ id: 'g1', reads: 'Control: q.time_of_day in the size → 0.3.', effect: probe({}, { size: 'q.time_of_day >= 0 ? 0.3 : 0.1' }) },
+			{ id: 'g2', reads: 'q.heightmap(0, 0) in the size: 1.0 = dropped at load; 0.3 = it runs.', effect: probe({}, { size: 'q.heightmap(0, 0) > -1000 ? 0.3 : 0.1' }) },
+			{ id: 'g3', reads: 'q.above_top_solid(0, 0) in the size: 1.0 = dropped at load; 0.3 = it runs.', effect: probe({}, { size: 'q.above_top_solid(0, 0) > -1000 ? 0.3 : 0.1' }) },
+			{ id: 'g4', reads: 'q.noise(1, 1) in the size: 1.0 = dropped at load; 0.3 = it runs.', effect: probe({}, { size: 'q.noise(1, 1) > -1000 ? 0.3 : 0.1' }) },
+			{ id: 'g5', reads: "q.has_biome_tag('overworld') in the size: 1.0 = dropped at load; 0.3 = it runs.", effect: probe({}, { size: "q.has_biome_tag('overworld') >= 0 ? 0.3 : 0.1" }) },
+			{ id: 'g6', reads: "q.any_tag('stone') (tags set) in the size: 1.0 = dropped at load; 0.3 = it runs.", effect: probe({}, { size: "q.any_tag('stone') >= 0 ? 0.3 : 0.1" }) },
+			{
+				id: 'g7',
+				reads: 'creation_expression reads q.heightmap, then sets v.ok: hidden = the expression was dropped (or aborted); visible = it ran.',
+				effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.h = q.heightmap(0, 0); v.ok = 1;' } }, { size: show('(v.ok ?? 0) == 1') }),
+			},
+			{
+				id: 'g8',
+				reads: 'creation_expression sets v.ok, then reads q.heightmap: hidden = dropped at load; visible with g7 hidden = a runtime abort.',
+				effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.ok = 1; v.h = q.heightmap(0, 0);' } }, { size: show('(v.ok ?? 0) == 1') }),
+			},
+			{ id: 'g9', reads: 'Visible control with an unused event that reads q.heightmap: does the content log report it at load?', effect: probe(), events: { unused: { expression: 'v.h = q.heightmap(0, 0);' } } },
+		],
+	},
+	{
+		id: 't67',
+		title: 'Member access (v.a.b) and ??',
+		question: 'Do dotted names like v.a.b behave as plain names, or as members of a struct v.a, and when does ?? catch them?',
+		assumption:
+			"Oxygen treats v.a.b as one name: setting it makes it readable, reading it unset aborts the expression, ?? catches it (alone or inside a bigger left side, as t01 p7), and v.a and v.a.b have nothing to do with each other (copying v.a copies nothing).",
+		wait: 2,
+		probes: [
+			{ id: 'm1', reads: 'Visible → v.a.b = 1 can be read back.', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.a.b = 1;' } }, { size: show('v.a.b == 1') }) },
+			{ id: 'm2', reads: 'Visible → ?? catches v.a.b when nothing was set.', effect: probe({}, { size: show('(v.a.b ?? 5) == 5') }) },
+			{ id: 'm3', reads: 'Visible → ?? catches v.a.b when v.a is a plain number.', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.a = 1;' } }, { size: show('(v.a.b ?? 5) == 5') }) },
+			{ id: 'm4', reads: 'Visible → ?? catches a missing member (v.a.c) of a struct that exists (v.a.b).', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.a.b = 1;' } }, { size: show('(v.a.c ?? 5) == 5') }) },
+			{
+				id: 'm5',
+				reads: 'Visible → copying v.a copies its member (v.c = v.a; v.c.b == 1). Hidden → v.a alone is unset (or copies nothing).',
+				effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.a.b = 1; v.c = v.a;' } }, { size: show('(v.c.b ?? 0) == 1') }),
+			},
+			{
+				id: 'm6',
+				reads: 'Visible → reading v.a (only v.a.b set) aborts the expression: v.ok stays unset.',
+				effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.a.b = 1; v.x = v.a; v.ok = 1;' } }, { size: show('(v.ok ?? 0) == 0') }),
+			},
+			{ id: 'm7', reads: 'Visible → three levels (v.a.b.c) work like two.', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.a.b.c = 1;' } }, { size: show('(v.a.b.c ?? 0) == 1') }) },
+			{ id: 'm8', reads: 'Visible → ?? catches an unset member inside a bigger left side ((v.z.b + 1) ?? 7).', effect: probe({}, { size: show('((v.z.b + 1) ?? 7) == 7') }) },
+			{
+				id: 'm9',
+				reads: 'Hidden → reading an unset member without ?? aborts the expression, as a plain unset variable does (t01 p6).',
+				effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.r = v.q.b; v.ok = 1;' } }, { size: show('(v.ok ?? 0) == 1') }),
+			},
+			{ id: 'm10', reads: 'Visible → a temp member works too (t.a.b).', effect: probe({ 'minecraft:emitter_initialization': { per_update_expression: 't.m10.b = 2;' } }, { size: show('(t.m10.b ?? 0) == 2') }) },
+		],
+	},
+	{
+		id: 't68',
+		title: 'Structs (v.a.b) in more detail',
+		question: 'What does a struct read as, and how do a struct and a plain value of the same name, and copies of a struct, behave? (Follows t67: v.c = v.a copies a struct, and reading v.a doesn’t abort.)',
+		assumption: 'To be measured. Square sizes say the value: see each probe.',
+		wait: 2,
+		probes: [
+			{ id: 's1', reads: 'v.a.b = 2; size v.a + 0.3: 0.3 = a struct reads 0; 2.3 = it reads its member; hidden = the read aborts.', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.a.b = 2;' } }, { size: 'v.a + 0.3' }) },
+			{ id: 's2', reads: 'v.a = 5; v.a.b = 2; then v.a == 5: 0.3 = the number survives setting a member; 0.1 = it doesn’t.', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.a = 5; v.a.b = 2;' } }, { size: '(v.a == 5) ? 0.3 : 0.1' }) },
+			{ id: 's3', reads: 'v.a.b = 2; v.a = 5; then v.a.b == 2: 0.3 = the member survives setting a number; 0.1 = it doesn’t.', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.a.b = 2; v.a = 5;' } }, { size: '((v.a.b ?? -1) == 2) ? 0.3 : 0.1' }) },
+			{ id: 's4', reads: 'v.a.b = 2; v.a.c = 3; v.d = v.a; then v.d.b + v.d.c == 5: 0.3 = every member is copied.', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.a.b = 2; v.a.c = 3; v.d = v.a;' } }, { size: '(((v.d.b ?? 0) + (v.d.c ?? 0)) == 5) ? 0.3 : 0.1' }) },
+			{ id: 's5', reads: 'v.a.b = 2; v.d = v.a; v.a.b = 7; then v.d.b == 2: 0.3 = a copy; 0.1 = a reference to the same struct.', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.a.b = 2; v.d = v.a; v.a.b = 7;' } }, { size: '((v.d.b ?? 0) == 2) ? 0.3 : 0.1' }) },
+		],
+	},
+	{
+		id: 't69',
+		title: 'Order inside and between appearance fields',
+		question: 'Do variables carry between the elements of size, tint and custom_direction arrays, and in which order do size, UV, tint and gradient stops run?',
+		assumption:
+			'Carry: size W → H, tint R → A, custom_direction X → Y → Z (as relative_position). Between components (o probes) the answer is recorded in temps by the appearance pass, copied by the emitter on its next update and shown by moving the particle 30 blocks up when false.',
+		wait: 2,
+		probes: [
+			{ id: 'c1', reads: 'Visible → size H sees a variable set in size W.', effect: probe({}, { size: ['v.w = 0.3; return v.w;', 'v.w'] }) },
+			{ id: 'c2', reads: 'Visible → tint A sees a variable set in tint R (blend material, so alpha counts).', effect: probe({}, { material: 'particles_blend', tint: ['v.c = 1; return 1;', 1, 1, 'v.c'] }) },
+			{ id: 'c3', reads: 'Visible → custom_direction Z sees a variable set in X (direction_z; a zero direction draws nothing).', effect: probe({}, { extraComponents: { 'minecraft:particle_appearance_billboard': dirBillboard(['v.d = -1; return 0;', 0, 'v.d']) } }) },
+			{ id: 'o1', reads: 'Visible → size runs before UV (UV sees what size set this frame).', effect: orderProbe('size', 'uv') },
+			{ id: 'o2', reads: 'Visible → size runs before tint.', effect: orderProbe('size', 'tint') },
+			{ id: 'o3', reads: 'Visible → UV runs before tint.', effect: orderProbe('uv', 'tint') },
+			{ id: 'o4', reads: 'Visible → per_render_expression runs before size.', effect: orderProbe('render', 'size') },
+			{ id: 'g1', reads: 'Visible → a gradient stop colour can be Molang (the stop that is used ran: it set a temp).', effect: gradientProbe(0.5) },
+			{ id: 'g2', reads: 'Visible → a stop the interpolant never reaches is evaluated anyway.', effect: gradientProbe(1) },
+		],
+	},
+	{
+		id: 't70',
+		title: 'Render pass timing',
+		question: 'Does render preparation see a newer v.particle_age than the update, and does a render counter reset in the emitter update stay in step?',
+		assumption: 'Render runs after every particle has updated, so it sees the advanced age; one render traversal per update.',
+		wait: 2,
+		probes: [
+			{
+				id: 'r1',
+				reads: 'Visible → render sees a later particle age than the update’s motion did.',
+				effect: probe({ 'minecraft:particle_initialization': { per_update_expression: 'v.ua = v.particle_age;', per_render_expression: 'v.ra = v.particle_age;' } }, { size: show('v.ra > v.ua') }),
+			},
+			{
+				id: 'r2',
+				reads: 'Visible → render sees the same age as the update’s motion (exclusive with r1).',
+				effect: probe({ 'minecraft:particle_initialization': { per_update_expression: 'v.ua = v.particle_age;', per_render_expression: 'v.ra = v.particle_age;' } }, { size: show('v.ra == v.ua') }),
+			},
+			{
+				id: 'r3',
+				reads: 'Three dots visible → a render counter reset in the emitter’s per_update stays 0–2 (one render traversal per update).',
+				effect: probe(
+					{
+						'minecraft:emitter_initialization': { per_update_expression: 'v.i = 0; v.rc = 0;' },
+						'minecraft:particle_initialization': { per_update_expression: 'v.k = v.i; v.i = v.i + 1;', per_render_expression: 'v.ri = v.rc; v.rc = v.rc + 1;' },
+						'minecraft:particle_motion_parametric': { relative_position: ['v.k * 0.4', 0, 0] },
+					},
+					{ count: 3, size: show('v.ri < 2.5') },
+				),
+			},
+		],
+	},
+	{
+		id: 't71',
+		title: 'Expiration expressions',
+		question: 'Does a multi-statement expiration_expression without return ever expire, and is a particle that expires on its first update ever drawn?',
+		assumption: 'No return → 0.0 → never expires. Expiry is tested after motion and age, before render preparation, so a particle that expires on its first update is never drawn.',
+		wait: 2,
+		probes: [
+			{ id: 'x1', reads: 'Visible → "v.e = 1; v.particle_age > 0;" (no return) never expires.', effect: probe({ 'minecraft:particle_lifetime_expression': { max_lifetime: 40, expiration_expression: 'v.e = 1; v.particle_age > 0;' } }) },
+			{ id: 'x2', reads: 'Hidden → the same with return expires.', effect: probe({ 'minecraft:particle_lifetime_expression': { max_lifetime: 40, expiration_expression: 'v.e = 1; return v.particle_age > 0;' } }) },
+			{
+				id: 'x3',
+				reads: 'Visible → a particle that expires on its first update was drawn at least once (two particles: the first dies at once; the second shows whether a frame ever drew two).',
+				effect: probe(
+					{
+						'minecraft:emitter_initialization': { per_update_expression: 'v.i = 0; v.rc = 0; v.most = t.x71_most ?? 0;' },
+						'minecraft:particle_initialization': { per_update_expression: 'v.k = v.i; v.i = v.i + 1;', per_render_expression: 'v.rc = v.rc + 1; t.x71_most = math.max(t.x71_most ?? 0, v.rc);' },
+						'minecraft:particle_lifetime_expression': { max_lifetime: 40, expiration_expression: 'return v.k < 0.5 && v.particle_age > 0;' },
+						'minecraft:particle_motion_parametric': { relative_position: [0, '(v.most >= 2) ? 0 : 30', 0] },
+					},
+					{ count: 2 },
+				),
+			},
+		],
+	},
+	{
+		id: 't72',
+		title: 'Molang control flow',
+		question: 'How many times can loop run, what do break, continue, fractional and negative counts and return inside a loop do, and do unchosen branches and short-circuited operands run?',
+		assumption: 'loop is capped at 1024; break and continue work; return inside a loop returns from the expression; unchosen ternary branches and the right side of a false && don’t run (so an unset read there doesn’t abort).',
+		wait: 2,
+		probes: [
+			{ id: 'l1', reads: 'Visible → loop(2000) runs 1024 times.', effect: probe({}, { size: 'v.n = 0; loop(2000, { v.n = v.n + 1; }); return (v.n == 1024) ? 0.3 : 0;' }) },
+			{ id: 'l2', reads: 'Visible → loop(2000) runs 2000 times (exclusive with l1).', effect: probe({}, { size: 'v.n = 0; loop(2000, { v.n = v.n + 1; }); return (v.n == 2000) ? 0.3 : 0;' }) },
+			{ id: 'l3', reads: 'Visible → break stops the loop (3 runs).', effect: probe({}, { size: 'v.n = 0; loop(10, { v.n = v.n + 1; (v.n >= 3) ? break; }); return (v.n == 3) ? 0.3 : 0;' }) },
+			{ id: 'l4', reads: 'Visible → continue skips the rest of the body (3 of 5).', effect: probe({}, { size: 'v.n = 0; v.i = 0; loop(5, { v.i = v.i + 1; (v.i < 3) ? continue; v.n = v.n + 1; }); return (v.n == 3) ? 0.3 : 0;' }) },
+			{ id: 'l5', reads: 'Visible → loop(2.5) runs 2 times.', effect: probe({}, { size: 'v.n = 0; loop(2.5, { v.n = v.n + 1; }); return (v.n == 2) ? 0.3 : 0;' }) },
+			{ id: 'l6', reads: 'Visible → loop(2.5) runs 3 times (exclusive with l5).', effect: probe({}, { size: 'v.n = 0; loop(2.5, { v.n = v.n + 1; }); return (v.n == 3) ? 0.3 : 0;' }) },
+			{ id: 'l7', reads: 'Visible → loop(-3) runs 0 times.', effect: probe({}, { size: 'v.n = 0; loop(-3, { v.n = v.n + 1; }); return (v.n == 0) ? 0.3 : 0;' }) },
+			{ id: 'l8', reads: 'Visible → return inside a loop returns from the whole expression.', effect: probe({}, { size: 'loop(3, { return 0.3; }); return 0;' }) },
+			{ id: 'b1', reads: 'Visible → an unchosen ternary branch doesn’t run.', effect: probe({}, { size: 'v.a = 0; v.b = 0; 1 ? { v.a = 1; } : { v.b = 1; }; return (v.a == 1 && v.b == 0) ? 0.3 : 0;' }) },
+			{ id: 'b2', reads: 'Visible → the right side of a false && isn’t read (an unset name there doesn’t abort).', effect: probe({}, { size: 'v.z = 0 && v.never_set_b2; return 0.3;' }) },
+			{ id: 'b3', reads: 'Visible → the right side of a true || isn’t read.', effect: probe({}, { size: 'v.z = 1 || v.never_set_b3; return 0.3;' }) },
+			{ id: 'b4', reads: 'Visible → an assignment is an expression with a value (v.a = (v.b = 3)).', effect: probe({}, { size: 'v.a = (v.b = 3); return (v.a == 3) ? 0.3 : 0;' }) },
+		],
+	},
+	{
+		id: 't73',
+		title: 'Molang strings, names and literals',
+		question: 'What works on strings besides == and !=, are escapes allowed, are t.* names case-insensitive, and which number literals parse?',
+		assumption: 'Strings only compare with == and != (case-sensitively, t19 p5); no escapes; t.* names are case-insensitive like v.*.',
+		wait: 2,
+		probes: [
+			{ id: 's1', reads: "Size 0.3 → 'a' < 'b' is true; hidden → false or 0; 1.0 → a load error.", effect: probe({}, { size: "('a' < 'b') ? 0.3 : 0" }) },
+			{ id: 's2', reads: "Size 0.3 → 'a' + 'b' == 'ab'; hidden → not; 1.0 → a load error.", effect: probe({}, { size: "(('a' + 'b') == 'ab') ? 0.3 : 0" }) },
+			{ id: 's3', reads: "Size 0.3 → an escaped quote parses ('a\\'b' != 'x'); 1.0 → a load error.", effect: probe({}, { size: "('a\\'b' != 'x') ? 0.3 : 0" }) },
+			{ id: 's4', reads: "Size 0.3 → a string equals a number? ('1' == 1); hidden → not.", effect: probe({}, { size: "('1' == 1) ? 0.3 : 0" }) },
+			{ id: 's5', reads: 'Visible → a string held in a variable compares (v.s = \'red\'; v.s == \'red\').', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: "v.s = 'red';" } }, { size: "(v.s == 'red') ? 0.3 : 0" }) },
+			{ id: 'n1', reads: 'Visible → temp names are case-insensitive (t.AbC = 2; t.abc == 2).', effect: probe({}, { size: 't.AbC = 2; return (t.abc == 2) ? 0.3 : 0;' }) },
+			{ id: 'n2', reads: 'Visible → namespaces are case-insensitive (V.x, Variable.x, MATH.abs).', effect: probe({}, { size: 'V.qq = 2; return (variable.QQ == 2 && MATH.abs(-1) == 1) ? 0.3 : 0;' }) },
+			{ id: 'k1', reads: 'Size 0.3 → 1e3 == 1000; 1.0 → a load error.', effect: probe({}, { size: '(1e3 == 1000) ? 0.3 : 0' }) },
+			{ id: 'k2', reads: 'Size 0.3 → .5 == 0.5; 1.0 → a load error.', effect: probe({}, { size: '(.5 == 0.5) ? 0.3 : 0' }) },
+			{ id: 'k3', reads: 'Size 0.3 → 0.5f == 0.5 (a C-style suffix); 1.0 → a load error.', effect: probe({}, { size: '(0.5f == 0.5) ? 0.3 : 0' }) },
+			{ id: 'k4', reads: 'Size 0.3 → true and false are 1 and 0; 1.0 → a load error.', effect: probe({}, { size: '(true == 1 && false == 0) ? 0.3 : 0' }) },
+		],
+	},
+	{
+		id: 't74',
+		title: 'Molang maths, randoms and built-ins',
+		question: 'Do the easing functions and less common maths functions exist and behave as documented, is math.random fresh per call, and what do particle built-ins and context names read where they don’t belong?',
+		assumption: 'All maths from the game’s metadata exist; random is fresh per call; v.particle_random_* is unset in emitter expressions; c.* is unset in /particle effects.',
+		wait: 2,
+		probes: [
+			{ id: 'e1', reads: 'Visible → math.ease_in_quad(0, 1, 0.5) == 0.25.', effect: probe({}, { size: show('math.ease_in_quad(0, 1, 0.5) == 0.25') }) },
+			{ id: 'e2', reads: 'Visible → math.ease_in_out_bounce and math.ease_out_elastic exist (end at 1).', effect: probe({}, { size: show('math.ease_in_out_bounce(0, 1, 1) == 1 && math.ease_out_elastic(0, 1, 1) == 1') }) },
+			{ id: 'm1', reads: 'Visible → math.inverse_lerp(0, 10, 5) == 0.5.', effect: probe({}, { size: show('math.inverse_lerp(0, 10, 5) == 0.5') }) },
+			{ id: 'm2', reads: 'Visible → math.lerprotate(350, 10, 0.5) is 0 or 360 (the short way round).', effect: probe({}, { size: show('math.abs(math.mod(math.lerprotate(350, 10, 0.5), 360)) < 0.01') }) },
+			{ id: 'm3', reads: 'Visible → math.trunc(-1.5) == -1.', effect: probe({}, { size: show('math.trunc(-1.5) == -1') }) },
+			{ id: 'm4', reads: 'Visible → math.copy_sign(2, -1) == -2.', effect: probe({}, { size: show('math.copy_sign(2, -1) == -2') }) },
+			{ id: 'm5', reads: 'Visible → math.atan2(1, 0) == 90 (y first, degrees).', effect: probe({}, { size: show('math.abs(math.atan2(1, 0) - 90) < 0.01') }) },
+			{ id: 'm6', reads: 'Visible → math.hermite_blend(0.5) == 0.5.', effect: probe({}, { size: show('math.abs(math.hermite_blend(0.5) - 0.5) < 0.001') }) },
+			{ id: 'r1', reads: 'Visible → two math.random calls in one expression differ.', effect: probe({}, { size: 'v.a = math.random(0, 1); v.b = math.random(0, 1); return (v.a != v.b) ? 0.3 : 0;' }) },
+			{ id: 'v1', reads: 'Visible → v.particle_random_1 is unset in an emitter expression (?? fallback taken).', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.r = v.particle_random_1 ?? -1;' } }, { size: show('v.r == -1') }) },
+			{ id: 'v2', reads: 'Visible → c.* is unset in a /particle effect (?? fallback taken).', effect: probe({}, { size: 'c.anything ?? 0.3' }) },
+			{ id: 'v3', reads: 'Visible → q.life_time reads 0 in a /particle effect.', effect: probe({}, { size: show('q.life_time == 0') }) },
+		],
+	},
+	{
+		id: 't75',
+		title: 'Motion: parametric direction and velocity facing',
+		question: 'Does parametric direction steer the velocity of a moving particle, does relative_position override dynamic motion, and where is the derive_from_velocity threshold?',
+		assumption: 'direction keeps the speed and turns the velocity; relative_position wins over dynamic motion; facing follows velocity only above min_speed_threshold (default 0.01).',
+		wait: 2,
+		probes: [
+			{ id: 'd1', reads: 'Shot along +X at 1 block/s with parametric direction (0, 1, 0): 2 blocks up after 2 s → direction turns the velocity; 2 blocks east → it does nothing here.', effect: motionProbe({ 'minecraft:particle_motion_parametric': { direction: [0, 1, 0] } }) },
+			{ id: 'd2', reads: 'Shot along +X at 1 block/s with relative_position [0, 0, 0]: at the marker → relative_position wins; 2 blocks east → dynamic motion wins.', effect: motionProbe({ 'minecraft:particle_motion_parametric': { relative_position: [0, 0, 0] } }) },
+			{ id: 'f1', reads: 'Visible → direction_z faces its velocity when moving at 0.02 blocks/s toward the camera (-Z).', effect: facingProbe(0.02) },
+			{ id: 'f2', reads: 'Visible → the same at 0.005 blocks/s (below 0.01): visible means it still faces the velocity, hidden means it keeps its starting facing.', effect: facingProbe(0.005) },
+			{ id: 'f3', reads: 'Visible → a min_speed_threshold of 0.001 makes the 0.005 blocks/s particle face its velocity.', effect: facingProbe(0.005, 0.001) },
+		],
+	},
+	{
+		id: 't76',
+		title: 'Curves and rates',
+		question: 'Does bezier_chain ignore horizontal_range, do left_value and right_value make a jump, is spawn_rate re-evaluated and is max_particles fixed per loop?',
+		assumption: 'bezier_chain ignores horizontal_range and jumps at a node with different side values; spawn_rate is live; max_particles is fixed when the loop starts; num_particles sees creation_expression.',
+		wait: 2.5,
+		probes: [
+			{ id: 'c1', reads: 'Visible → bezier_chain keys 0–1 with horizontal_range 10 and input = age (2 s): it holds its last value (range ignored).', effect: curveProbe('v.cv > 0.9'), curves: { 'variable.c76': { type: 'bezier_chain', input: 'v.particle_age', horizontal_range: 10, nodes: { '0': { value: 0, slope: 0 }, '1': { value: 1, slope: 0 } } } } },
+			{ id: 'c2', reads: 'Visible → just after a node with left 0.1 / right 0.9 the chain reads near 0.9.', effect: curveProbe('v.cv > 0.8'), curves: { 'variable.c76': { type: 'bezier_chain', input: '0.51', nodes: { '0': { value: 0.1, slope: 0 }, '0.5': { left_value: 0.1, right_value: 0.9, slope: 0 }, '1': { value: 0.9, slope: 0 } } } } },
+			{ id: 'c3', reads: 'Visible → a linear curve does use horizontal_range (input 2 of range 10 → 0.2 of the way).', effect: curveProbe('math.abs(v.cv - 0.2) < 0.01'), curves: { 'variable.c76': { type: 'linear', input: '2', horizontal_range: 10, nodes: [0, 1] } } },
+			{ id: 'q1', reads: 'Visible → spawn_rate is re-evaluated: 0 for the first 0.5 s, then 20/s.', effect: rateProbe({ spawn_rate: 'v.r', max_particles: 100 }, 'v.r = (v.emitter_age < 0.5) ? 0 : 20;') },
+			{ id: 'q2', reads: 'A row of dots → max_particles is re-evaluated (1 at first, 30 later); one dot → fixed for the loop.', effect: rateProbe({ spawn_rate: 30, max_particles: 'v.m' }, 'v.m = (v.emitter_age < 0.3) ? 1 : 30;') },
+			{ id: 'q3', reads: 'A row of 5 → num_particles sees a value creation_expression set; nothing → it doesn’t.', effect: burstProbe() },
+		],
+	},
+	{
+		id: 't77',
+		title: 'Children of events, and far billboards',
+		question: 'Does a child’s pre_effect_expression see its parent’s variables, does its creation_expression see what pre_effect set, and do big billboards far away still draw?',
+		assumption: 'Each emitter has its own variables (pre_effect can’t read the parent’s); pre_effect runs before creation; no per-particle distance cull.',
+		wait: 2,
+		probes: [
+			{ id: 'k1', reads: 'Visible → a child’s pre_effect_expression reads the parent’s v.sec (set to 7).', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.sec = 7;' }, 'minecraft:emitter_lifetime_events': { creation_event: 'kid' } }, { size: 0 }), children: { child: probe({}, { size: show('(v.got ?? -1) == 7') }) }, events: { kid: { particle_effect: { effect: 'oxygen:t77_k1_child', type: 'emitter', pre_effect_expression: 'v.got = v.sec ?? -1;' } } } },
+			{ id: 'k2', reads: 'Visible → the child’s creation_expression sees what its pre_effect_expression set.', effect: probe({ 'minecraft:emitter_lifetime_events': { creation_event: 'kid' } }, { size: 0 }), children: { child: probe({ 'minecraft:emitter_initialization': { creation_expression: 'v.b = v.a ?? -1;' } }, { size: show('v.b == 1') }) }, events: { kid: { particle_effect: { effect: 'oxygen:t77_k2_child', type: 'emitter', pre_effect_expression: 'v.a = 1;' } } } },
+			{ id: 'k3', reads: 'Visible → a child reads a temp its parent set outside any sequence (temps are global).', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: 't.k3_77 = 3;' }, 'minecraft:emitter_lifetime_events': { creation_event: 'kid' } }, { size: 0 }), children: { child: probe({}, { size: show('(v.got ?? 0) == 3') }) }, events: { kid: { particle_effect: { effect: 'oxygen:t77_k3_child', type: 'emitter', pre_effect_expression: 'v.got = t.k3_77 ?? 0;' } } } },
+			{ id: 'f1', reads: 'Look 100 blocks behind the probes (+Z): a 5-block square there?', effect: farProbe(100) },
+			{ id: 'f2', reads: 'Look 300 blocks behind the probes: a 15-block square?', effect: farProbe(300) },
+			{ id: 'f3', reads: 'Look 1000 blocks behind the probes: a 50-block square?', effect: farProbe(1000) },
+		],
+	},
+	{
+		id: 't78',
+		title: 'Follow-ups: pre-effect order, loop limits, slow facing, far billboards',
+		question: 't77 k2: does an event child’s creation_expression run before its pre_effect_expression? Where is the loop limit (t72: 2000 ran)? Does loop round a fraction up? What facing does a particle below derive_from_velocity’s threshold keep? Up to what distance do big billboards draw?',
+		assumption: 'To be measured.',
+		wait: 2.5,
+		probes: [
+			{ id: 'p1', reads: 'Visible → the child’s creation_expression ran before its pre_effect_expression (it saw nothing).', ...kid('t78', 'p1', 'v.b = v.a ?? -1;', 'v.a = 1;', 'v.b == -1') },
+			{ id: 'p2', reads: 'Visible → the pre_effect_expression did run (the particle sees v.a == 1).', ...kid('t78', 'p2', 'v.b = 0;', 'v.a = 1;', '(v.a ?? 0) == 1') },
+			{ id: 'p3', reads: 'Visible → the child’s emitter per_update sees what pre_effect set.', ...kid('t78', 'p3', 'v.b = 0;', 'v.a = 1;', '(v.u ?? 0) == 1', 'v.u = v.a ?? -1;') },
+			{ id: 'p4', reads: 'Visible → what creation sets survives the pre_effect (creation v.a = 5, pre_effect sets v.z only).', ...kid('t78', 'p4', 'v.a = 5;', 'v.z = 1;', '(v.a ?? 0) == 5') },
+			{ id: 'p5', reads: 'Visible → pre_effect overwrites what creation set (creation v.a = 5, pre_effect v.a = 1 → 1).', ...kid('t78', 'p5', 'v.a = 5;', 'v.a = 1;', '(v.a ?? 0) == 1') },
+			{ id: 'l1', reads: 'Visible → loop(20000) runs 20000 times.', effect: probe({}, { size: 'v.n = 0; loop(20000, { v.n = v.n + 1; }); return (v.n == 20000) ? 0.3 : 0;' }) },
+			{ id: 'l2', reads: 'Visible → loop(200000) runs 200000 times.', effect: probe({}, { size: 'v.n = 0; loop(200000, { v.n = v.n + 1; }); return (v.n == 200000) ? 0.3 : 0;' }) },
+			{ id: 'l3', reads: 'Visible → loop(2.4) runs 3 times (rounds up).', effect: probe({}, { size: 'v.n = 0; loop(2.4, { v.n = v.n + 1; }); return (v.n == 3) ? 0.3 : 0;' }) },
+			{ id: 'l4', reads: 'Visible → loop(0.5) runs once.', effect: probe({}, { size: 'v.n = 0; loop(0.5, { v.n = v.n + 1; }); return (v.n == 1) ? 0.3 : 0;' }) },
+			{ id: 'f1', reads: 'Visible → direction_z moving away from the camera (+Z) at 0.005/s still shows its face (so slow particles keep a camera-ward default, not their velocity).', effect: facingProbe(0.005, undefined, 1) },
+			{ id: 'f2', reads: 'Visible → the same at 0.02/s (above the threshold: facing +Z, away, so expected hidden).', effect: facingProbe(0.02, undefined, 1) },
+			{ id: 'f3', reads: 'Visible → a direction_z particle that never moves shows its face.', effect: facingProbe(0) },
+		],
+	},
+	{
+		id: 't79',
+		title: 'Far billboards',
+		question: 'Up to what distance do big billboards draw? Each square is behind the row (+Z) at a different elevation, sized to look the same from the camera.',
+		assumption: 'No per-particle distance cull (creators’ notes).',
+		wait: 2,
+		probes: [
+			{ id: 'f1', reads: '100 blocks, lowest of the far squares', effect: farProbe(100, 0.03) },
+			{ id: 'f2', reads: '250 blocks', effect: farProbe(250, 0.06) },
+			{ id: 'f3', reads: '500 blocks', effect: farProbe(500, 0.09) },
+			{ id: 'f4', reads: '1000 blocks', effect: farProbe(1000, 0.12) },
+			{ id: 'f5', reads: '3000 blocks, highest', effect: farProbe(3000, 0.15) },
+		],
+	},
+	{
+		id: 't80',
+		title: 'Entity-only queries in a /particle effect',
+		question: 'What do q.delta_time, a bone query and q.relative_block_has_any_tag do in an effect started by /particle, with no actor? (e16, e17 measured them on an entity.)',
+		assumption: 'Squares: 0.3 / 0.1 as each probe says; 1.0 (the default size) = the field was dropped at load.',
+		wait: 2,
+		probes: [
+			{ id: 'd1', reads: 'q.delta_time > 0: 0.3 = the frame time, 0.1 = 0', effect: probe({}, { size: '(q.delta_time > 0) ? 0.3 : 0.1' }) },
+			{ id: 'b1', reads: "creation v.o = q.bone_origin('root'); v.ok = 1;: 0.3 = the expression went on", effect: probe({ 'minecraft:emitter_initialization': { creation_expression: "v.o = q.bone_origin('root'); v.ok = 1;" } }, { size: '((v.ok ?? 0) == 1) ? 0.3 : 0.1' }) },
+			{ id: 'b2', reads: '…and the struct stayed unset: 0.3 = unset, 0.1 = it has a value', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: "v.o = q.bone_origin('root');" } }, { size: '((v.o.y ?? -999) == -999) ? 0.3 : 0.1' }) },
+			{ id: 'k1', reads: "q.relative_block_has_any_tag(0, -3, 0, the pickaxe tag), the floor below: 0.3 = true, 0.1 = false or 0", effect: probe({}, { size: "q.relative_block_has_any_tag(0, -3, 0, 'minecraft:is_pickaxe_item_destructible') ? 0.3 : 0.1" }) },
+			{ id: 'k2', reads: 'the same assigned in creation, then v.ok = 1: 0.3 = the expression went on', effect: probe({ 'minecraft:emitter_initialization': { creation_expression: "v.r = q.relative_block_has_any_tag(0, -3, 0, 'minecraft:is_pickaxe_item_destructible'); v.ok = 1;" } }, { size: '((v.ok ?? 0) == 1) ? 0.3 : 0.1' }) },
+			{ id: 'v1', reads: 'q.variant (an entity query, no actor): 0.3 = reads 0, 0.1 = something else', effect: probe({}, { size: '(q.variant == 0) ? 0.3 : 0.1' }) },
+		],
+	},
 ];
+
+/** A parent whose creation event spawns a child; the child runs `creation` and the event's `pre`, and shows when `cond` holds */
+function kid(test: string, id: string, creation: string, pre: string, cond: string, update = ''): Pick<Probe, 'effect' | 'children' | 'events'> {
+	const init: Json = { creation_expression: creation, ...(update ? { per_update_expression: update } : {}) };
+	return {
+		effect: probe({ 'minecraft:emitter_lifetime_events': { creation_event: 'kid' } }, { size: 0 }),
+		children: { child: probe({ 'minecraft:emitter_initialization': init }, { size: show(cond) }) },
+		events: { kid: { particle_effect: { effect: `oxygen:${test}_${id}_child`, type: 'emitter', pre_effect_expression: pre } } },
+	};
+}
+
+/** A probe that is moved 30 blocks up (out of view) unless `cond` holds, read in the particle's motion */
+function parked(cond: string, components: Json = {}, o: ProbeOpts = {}): Json {
+	return probe({ ...components, 'minecraft:particle_motion_parametric': { relative_position: [0, `(${cond}) ? 0 : 30`, 0] } }, o);
+}
+
+/**
+ * Which of two appearance steps runs first: each appends its digit to a temp sequence (1 = `a`, 2 = `b`) for the
+ * frame; the emitter's next update keeps the sequence and clears it, and the particle stays in view if it was 12.
+ */
+function orderProbe(a: 'size' | 'uv' | 'tint' | 'render', b: 'size' | 'uv' | 'tint' | 'render'): Json {
+	const tag = `t.o69_${a}_${b}`;
+	const mark = (k: 'size' | 'uv' | 'tint' | 'render') => `${tag} = (${tag} ?? 0) * 10 + ${k === a ? 1 : 2};`;
+	const components: Json = { 'minecraft:emitter_initialization': { per_update_expression: `v.seq = ${tag} ?? 0; ${tag} = 0;` } };
+	const bb: Json = { size: [0.3, 0.3], facing_camera_mode: 'lookat_xyz', uv: { texture_width: 16, texture_height: 16, uv: [0, 0], uv_size: [16, 16] } };
+	for (const k of [a, b]) {
+		if (k === 'size') bb.size = [`${mark('size')} return 0.3;`, 0.3];
+		if (k === 'uv') bb.uv.uv = [`${mark('uv')} return 0;`, 0];
+		if (k === 'tint') components['minecraft:particle_appearance_tinting'] = { color: [`${mark('tint')} return 1;`, 1, 1, 1] };
+		if (k === 'render') components['minecraft:particle_initialization'] = { per_render_expression: mark('render') };
+	}
+	components['minecraft:particle_appearance_billboard'] = bb;
+	return parked('v.seq == 12', components);
+}
+
+/** A tint gradient read at 0.25 between stops 0, 0.5 and 1; the stop at `stop` marks a temp when its colour runs */
+function gradientProbe(stop: 0.5 | 1): Json {
+	const tag = `t.g69_${stop === 1 ? 'far' : 'near'}`;
+	const colour = (k: number) => (k === stop ? [`${tag} = 1; return 1;`, 1, 1, 1] : [1, 1, 1, 1]);
+	return parked(`(v.hit ?? 0) > 0`, {
+		'minecraft:emitter_initialization': { per_update_expression: `v.hit = ${tag} ?? 0;` },
+		'minecraft:particle_appearance_tinting': { color: { interpolant: 0.25, gradient: { '0.0': colour(0), '0.5': colour(0.5), '1.0': colour(1) } } },
+	});
+}
+
+/** A billboard facing along custom_direction */
+function dirBillboard(dir: unknown[]): Json {
+	return { size: [VISIBLE, VISIBLE], facing_camera_mode: 'direction_z', direction: { mode: 'custom', custom_direction: dir }, uv: { texture_width: 16, texture_height: 16, uv: [0, 0], uv_size: [16, 16] } };
+}
+
+/** A particle shot along +X at 1 block/s; `extra` changes its motion. Where it is after the wait answers the probe. */
+function motionProbe(extra: Json): Json {
+	return probe(
+		{
+			'minecraft:emitter_shape_point': { direction: [1, 0, 0] },
+			'minecraft:particle_initial_speed': 1,
+			'minecraft:particle_motion_dynamic': {},
+			...extra,
+		},
+		{ size: 0.3 },
+	);
+}
+
+/** A direction_z billboard moving toward the camera (-Z, or away with `dz` 1) at `speed` blocks/s; velocity facing with `threshold` */
+function facingProbe(speed: number, threshold?: number, dz = -1): Json {
+	return probe(
+		{
+			'minecraft:emitter_shape_point': { direction: [0, 0, dz] },
+			'minecraft:particle_initial_speed': speed,
+			'minecraft:particle_motion_dynamic': {},
+			'minecraft:particle_appearance_billboard': {
+				size: [VISIBLE, VISIBLE],
+				facing_camera_mode: 'direction_z',
+				direction: { mode: 'derive_from_velocity', ...(threshold !== undefined ? { min_speed_threshold: threshold } : {}) },
+				uv: { texture_width: 16, texture_height: 16, uv: [0, 0], uv_size: [16, 16] },
+			},
+		},
+		{},
+	);
+}
+
+/** Reads the curve variable.c76 into v.cv in the particle update; visible when `cond` holds */
+function curveProbe(cond: string): Json {
+	return probe({ 'minecraft:particle_initialization': { per_update_expression: 'v.cv = v.c76;' } }, { size: show(cond) });
+}
+
+/** A steady emitter whose spawn variables the emitter update sets; each particle sits 0.1 further along X */
+function rateProbe(rate: Json, update: string): Json {
+	return probe(
+		{
+			'minecraft:emitter_rate_steady': rate,
+			'minecraft:emitter_lifetime_once': { active_time: 2 },
+			'minecraft:emitter_initialization': { creation_expression: 'v.r = 0; v.m = 1;', per_update_expression: `${update} v.i = 0;` },
+			'minecraft:particle_initialization': { per_update_expression: 'v.k = v.i; v.i = v.i + 1;' },
+			'minecraft:particle_motion_parametric': { relative_position: ['v.k * 0.06', 0, 0] },
+		},
+		{ size: 0.05 },
+	);
+}
+
+/** An instant burst of v.n particles, v.n set in creation_expression */
+function burstProbe(): Json {
+	return probe(
+		{
+			'minecraft:emitter_rate_instant': { num_particles: 'v.n ?? 0' },
+			'minecraft:emitter_initialization': { creation_expression: 'v.n = 5;', per_update_expression: 'v.i = 0;' },
+			'minecraft:particle_initialization': { per_update_expression: 'v.k = v.i; v.i = v.i + 1;' },
+			'minecraft:particle_motion_parametric': { relative_position: ['v.k * 0.2', 0, 0] },
+		},
+		{ size: 0.08 },
+	);
+}
+
+/** A square `d` blocks behind the probe (+Z), sized to look like a 0.3 one at 6 blocks… scaled with distance */
+function farProbe(d: number, elevation = 0): Json {
+	return probe({ 'minecraft:particle_motion_parametric': { relative_position: [0, d * elevation, d] } }, { size: d / 60, lifetime: 600, activeTime: 600 });
+}
 
 // ---------------------------------------------------------------- helpers
 

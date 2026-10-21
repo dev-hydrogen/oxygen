@@ -1,5 +1,35 @@
 # Changelog
 
+## Oxygen 0.2.2
+
+### Added
+
+- The Context panel can fill every query the preview has no value for (0, 1 or an empty string) in one step, clear
+  them, and nudge or scale every number set for a query at once, as it already could for variables.
+- When a query has no value in the preview, the Problems panel says why: it needs an entity, the game can't run
+  it in particle Molang, or it returns a struct to assign to a variable.
+
+### Changed
+
+Measured in the game with new tests in the test pack (`t66`–`t80`, `e13`–`e31`):
+
+- Queries for world generation or tags (`q.heightmap`, `q.above_top_solid`, `q.noise`, the biome tags,
+  `q.any_tag`) are load errors, as in the game, and their field uses its default. Completions no longer offer them.
+- Names with more dots (`v.a.b`) are structs: `v.c = v.a` copies every member, reading `v.a` gives 0, and setting
+  a member replaces a number `v.a` held. `??` on a member and temp members are flagged as warnings, as the game
+  logs them, and still run.
+- Bone queries assigned to a variable fill the struct with zeros, as the game does in particles, where they never
+  find a bone. Used any other way they're a load error.
+- `q.life_time` and `q.delta_time` read 0 in particles.
+- An event's `pre_effect_expression` runs after the spawned effect's `creation_expression`.
+- `loop` has no 1,024 cap, and a fractional count rounds up.
+- `<`, `>`, `+` and the other numeric operators on a string are load errors.
+- An assignment has a value: `v.a = (v.b = 3)` sets both.
+- Children of a particle's events on an entity appear where the game puts them: `emitter_bound` children at the
+  emitter, `emitter` children at the particle (at the emitter when the parent keeps its particles in local space).
+- `emitter_local_space` with rotation but no position is ignored, as the game rejects it.
+- `bind_to_actor: false` effects use the world's axes.
+
 ## Oxygen 0.2.1
 
 ### Added

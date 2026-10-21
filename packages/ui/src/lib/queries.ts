@@ -1,7 +1,20 @@
-import type { Value } from 'molangjs';
+import { STRUCT_QUERIES, type Value } from 'molangjs';
 import type { ParticleWorld, QueryContext, QueryProvider, Vec3 } from 'wintersky';
 import { getQuery } from '@oxygen/metadata';
 import { callSignature } from './inputs';
+
+/** The stand-in entity as the queries see it */
+export interface QueryEntity {
+	position: Vec3;
+	velocity: Vec3;
+	yaw: number;
+}
+
+/** `query.bone_aabb.min.y` (one member of a struct query) → `['query.bone_aabb', 'min.y']`; others → `[name, null]` */
+export function splitMember(name: string): [string, string | null] {
+	for (const q of Object.keys(STRUCT_QUERIES)) if (name.startsWith(q + '.')) return [q, name.slice(q.length + 1)];
+	return [name, null];
+}
 
 export interface PreviewQueryOptions {
 	/** Scenario values (exact call signature or bare name); undefined = use the live value */
@@ -10,7 +23,7 @@ export interface PreviewQueryOptions {
 	timeOfDay: () => number;
 	lastDelta: () => number;
 	/** The stand-in entity, when the effect is spawned on one */
-	entity: () => { position: Vec3; velocity: Vec3; yaw: number } | null;
+	entity: () => QueryEntity | null;
 }
 
 const DEG = 180 / Math.PI;
@@ -28,13 +41,31 @@ export class PreviewQueries implements QueryProvider {
 	constructor(private o: PreviewQueryOptions) {}
 
 	resolve(name: string, args: Value[], ctx: QueryContext): Value | undefined {
-		const v = this.creationBlind(name, ctx) ? 0 : (this.o.override(name, args, ctx.world) ?? this.live(name, args, ctx));
+		const [base, member] = splitMember(name);
+		// a scenario value for the whole struct query (q.bone_origin('head')) answers each of its members
+		const set = this.o.override(name, args, ctx.world) ?? (member ? this.o.override(base, args, ctx.world) : undefined);
+		// bone queries never find a bone in particle Molang (e15), so only a scenario value answers them
+		const v = !member && this.creationBlind(base, ctx) ? 0 : (set ?? (member ? undefined : this.live(name, args, ctx)));
 		if (this.recording) {
 			// calls with ever-changing arguments (q.position(v.particle_age)) would grow this without end
 			if (this.last.size > 512) this.last.clear();
 			this.last.set(callSignature(name, args), v);
 		}
 		return v;
+	}
+
+	/** Why a query has no value here, for the problem the engine reports */
+	why(name: string, _args: Value[], ctx: QueryContext): string | undefined {
+		const [base] = splitMember(name);
+		const info = getQuery(base);
+		if (!info) return undefined;
+		if (STRUCT_QUERIES[base]) {
+			const found = "particle effects never find a bone in-game ('Could not find specified bone' on an entity, whatever its queryable_geometry, and in /particle effects: e29, t80)";
+			return `${found}. The struct reads 0 and the expression goes on (give the query a value in Context to try one out)`;
+		}
+		if (base === 'query.relative_block_has_any_tag') return "the game can't evaluate it in particle Molang or pre_effect_script ('Scope requires an Actor', e16): it reads 0";
+		if (info.context === 'entity' && ctx.emitter.rootContext !== 'entity') return "it asks about the entity an effect is on, and this one isn't spawned on an entity (use the Entity spawn mode, or give it a value in Context)";
+		return undefined;
 	}
 
 	/**
@@ -92,7 +123,12 @@ export class PreviewQueries implements QueryProvider {
 				const a = e.rootContext === 'entity' ? this.o.entity() : null;
 				return (a ?? e).velocity[Math.max(0, Math.min(2, n(0)))] * this.o.lastDelta();
 			}
+			case 'query.life_time':
+				// the time since the current animation started: particles read 0, on an entity too (e16, e17)
+				return 0;
 			case 'query.delta_time':
+				// particles read 0, on an entity (e16, e17) and in /particle effects (t80)
+				return 0;
 			case 'query.last_frame_time':
 			case 'query.average_frame_time':
 			case 'query.minimum_frame_time':
@@ -113,9 +149,6 @@ export class PreviewQueries implements QueryProvider {
 			case 'query.get_level_seed_based_fraction':
 				return 0.5;
 			case 'query.is_in_ui':
-				return 0;
-			case 'query.heightmap':
-			case 'query.above_top_solid':
 				return 0;
 			case 'query.total_emitter_count':
 				return w.emitters.length;

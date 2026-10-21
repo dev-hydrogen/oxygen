@@ -23,6 +23,33 @@ When the game silently ignores something, Oxygen's preview does the same, and th
 - **Numbers are 32-bit,** as in the game, so `0.1 + 0.2 == 0.3` is true.
 - **Curves aren't ready in an emitter's creation expression.** Elsewhere they clamp at their ends: a curve read
   before its first key or after its last holds that key's value.
+- **Queries only for world generation or tags are unknown queries here.** `q.heightmap`, `q.above_top_solid`,
+  `q.noise`, the biome tags and `q.any_tag` can't be loaded in an effect, whether it plays on its own or on an
+  entity, so their field falls back to its default, as with a misspelt query. They can't be loaded in an
+  entity's animations either.
+- **Names with more dots are structs.** `v.a.b = 1` makes `v.a` a struct with a member `b`:
+  - Copying `v.c = v.a` copies every member, as an independent copy.
+  - Reading `v.a` itself gives 0, without stopping the expression.
+  - Setting a member replaces a number `v.a` held, but setting `v.a` to a number keeps its members.
+  - Reading a member nobody set stops the expression, like any unset variable.
+  - The game reports `??` on a member, and a member of a temp, as errors when it loads the effect, then runs
+    them anyway. Oxygen shows them as warnings.
+- **Loops have no 1,024 cap** (200,000 iterations ran), and a fractional count rounds up: `loop(2.4, …)` runs 3
+  times.
+- **Strings only compare.** `'a' < 'b'` or `'a' + 'b'` can't be loaded, so the field falls back to its default.
+- **An assignment has a value:** `v.a = (v.b = 3)` sets both.
+- **Bone queries never find a bone in particle Molang:** the game reports "Could not find specified bone",
+  in effects on their own and on an entity, in `pre_effect_script` too, whatever the entity's
+  `queryable_geometry`. Only the entity's own animations can read its bones: there `queryable_geometry`
+  picks the geometry (with several and none picked, the non-default one answers), and the values are the
+  geometry's initial ones in model space (`q.bone_origin` gives the pivot as x, 24 − y, z in pixels;
+  `q.bone_aabb` gives the cube box centred on 0).
+  - Assigned to a variable (`v.o = q.bone_origin('head');`), every member reads 0 and the expression goes on.
+  - Used any other way (`q.bone_origin('head') + 1`), the field can't be loaded.
+  - Reading a member straight off the call (`q.bone_origin('head').y`) is a syntax error.
+- **Some queries read 0 in particles,** on an entity or not. `q.relative_block_has_any_tag` "requires an
+  Actor", which particles don't have, even on an entity (the entity's own animations can use it).
+  `q.life_time` and `q.delta_time` read 0.
 
 ## Spawning and lifetimes
 
@@ -60,6 +87,9 @@ The Inspector's Phases view and the Expression panel's "whole effect" view show 
 - **A step with sub-steps or a random choice runs only those.** Its own expression, spawn and sound are ignored.
   Oxygen greys them out and offers to move them into a step.
 - **A plain step spawns its effect first, then runs its expression.**
+- **A spawned effect runs its own creation expression before the event's pre-effect expression.** The
+  pre-effect can't read the parent's variables, and creation doesn't see what the pre-effect sets: hand values
+  over through temps, which are global.
 - **Random choices are by weight.** A weight of 0 never wins against a positive weight.
 - **Where spawned effects appear** depends on how the parent was started. For `/particle` and scripts:
   - a single particle spawned by an event appears at the world origin, not at the parent;
@@ -109,7 +139,7 @@ emissive particles at night.
 
 ## Effects on an entity
 
-Measured with a test entity whose bones and locators are rotated, animated and scaled (`e01`–`e12` in the test
+Measured with a test entity whose bones and locators are rotated, animated and scaled (`e01`–`e18` in the test
 pack):
 
 - **A locator flips the effect's Y axis.** Without a locator an effect sits at the entity's feet with X to its
@@ -122,7 +152,16 @@ pack):
 - **The entity's movement adds nothing** to its particles, even with `emitter_local_space` velocity on.
 - **World-space effects on an entity measure `relative_position` from the world origin,** not from the emitter.
 - **`bind_to_actor: false`** starts the effect where the entity stands, or at the world origin when it has a
-  locator.
+  locator. Its axes are the world's, not the entity's, and its events spawn children the way an effect from
+  `/particle` does.
+- **Children of a particle event** appear in different places by spawn type:
+  - `emitter_bound` children appear at the emitter.
+  - `emitter` children appear at the particle. If the emitter keeps its particles in local space, they appear
+    at the emitter instead, and a creation event's children appear away from the entity.
+  - `particle` and `particle_with_velocity` children exist, but appear away from the entity. Where they go
+    isn't known yet, so Oxygen puts them where it puts them for `/particle`.
+- **`emitter_local_space` with rotation but no position** is rejected when the game loads the effect, and the
+  effect runs in world space.
 - **`entity_aabb`** fills the entity's collision box placed at the emitter, in the emitter's axes. On a locator
   it hangs down from the locator.
 - **Entity queries** (`q.variant`, `q.property`) work in an entity's effects, except in the emitter's creation
@@ -132,6 +171,11 @@ pack):
 - **When the entity goes away,** or the controller state that played the effect ends, its emitters stop and
   particles in its space vanish. World-space particles carry on. An emitter outlives the animation that fired it.
   A looping animation fires a new emitter on each pass.
+- **When the entity dies,** `q.is_alive` reads 0 straight away, and its emitters keep running until the entity is
+  removed. Oxygen's stand-in doesn't die; it only goes away.
+- **An invisible entity's effects don't show.**
+- **Effects stop showing when their entity is out of view range:** past about 64 blocks the game culls the
+  entity, and the effects on it go with it.
 
 Oxygen's stand-in entity does all of this with the model at rest; it doesn't play the entity's animations.
 
@@ -143,12 +187,14 @@ For effects started with `/particle` or a script, `q.distance_from_camera` follo
 ## What isn't measured yet
 
 A few behaviours can't be checked with `/particle` or scripts, or haven't been yet. Oxygen follows creators'
-reports for these:
+reports or the game's own documentation for these, and the test pack has tests ready for most of them:
 
 - How a looping emitter played by an entity restarts. Oxygen treats each loop as a fresh emitter whose old
   particles live on.
 - How an emitter bound to its parent follows a moving, turning parent.
 - Some rarely used maths functions and easing curves.
+- Where an entity's single-particle children, and its local-space creation children, end up. They exist, but
+  aren't near the entity or the world origin.
 
 Editor-only conveniences that the game doesn't have, like pinned variables, scenario inputs and Repeat, are
 marked as such wherever they appear.

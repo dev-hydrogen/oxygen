@@ -1,4 +1,4 @@
-import { molangMetadata } from '@oxygen/metadata';
+import { molangMetadata, queryExists } from '@oxygen/metadata';
 import { parse, walk, type MolangFeatures, type Node } from 'molangjs';
 import { stripComments, type LangDiagnostic, type MolangContext } from './service';
 
@@ -66,7 +66,7 @@ export function quickFixes(src: string, d: LangDiagnostic, ctx: MolangContext = 
 			const m = /^[a-z_]+\.[a-z0-9_]*/i.exec(src.slice(d.from));
 			if (!m) break;
 			const isQuery = d.code === 'unknown-query';
-			const names = isQuery ? molangMetadata.queries.map((q) => q.name) : molangMetadata.math.map((f) => f.name);
+			const names = isQuery ? molangMetadata.queries.filter((q) => queryExists(q.name)).map((q) => q.name) : molangMetadata.math.map((f) => f.name);
 			for (const name of nearest(m[0], names, isQuery ? 'query' : 'math', isQuery ? 'q' : 'math')) out.push({ title: `Change to ${name}`, edits: [{ from: d.from, to: d.from + m[0].length, insert: name }] });
 			break;
 		}

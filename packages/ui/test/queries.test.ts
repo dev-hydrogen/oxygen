@@ -62,3 +62,53 @@ describe('entity queries in the preview (measured, e07/e10/e11)', () => {
 		expect(v('y')).toBe(1);
 	});
 });
+
+describe('queries the game has no value for in particle Molang (measured, e15–e17)', () => {
+	const effect = (update: string, creation = '') => ({
+		...fx,
+		particle_effect: { ...fx.particle_effect, components: { ...fx.particle_effect.components, 'minecraft:emitter_initialization': { creation_expression: creation || 'v.none = 0;', per_update_expression: update } } },
+	});
+	const run = (json: object, context: 'entity' | 'command', override: (name: string) => number | undefined = () => undefined) => {
+		const world = new ParticleWorld();
+		const entity = { position: [0, 0, 0] as [number, number, number], velocity: [0, 0, 0] as [number, number, number], yaw: 0 };
+		world.queries = new PreviewQueries({ override, timeOfDay: () => 0, lastDelta: () => 1 / 60, entity: () => entity });
+		const e = world.spawn(world.loadEffect(json), { position: [0, 0, 0], context });
+		world.step(1 / 60);
+		const v = (n: string) => e.vars[world.symbols.variable(`variable.${n}`)];
+		const reasons = [...world.errors.values()].filter((x) => x.code === 'unknown-query').map((x) => x.detail ?? '');
+		return { v, reasons };
+	};
+
+	it('bone queries never find a bone: assigned, the struct reads 0 and the expression goes on (e17 b1, e29, t80 b2)', () => {
+		const { v, reasons } = run(effect("v.o = q.bone_origin('root'); v.ok = 1;"), 'entity');
+		expect([v('o.x'), v('o.y'), v('o.z')]).toEqual([0, 0, 0]);
+		expect(v('ok')).toBe(1);
+		expect(reasons[0]).toMatch(/^query\.bone_origin\.x\|particle effects never find a bone in-game/);
+	});
+
+	it('used as a number, a bone query is a load error: the field is dropped (e17 b2)', () => {
+		const world = new ParticleWorld();
+		const def = world.loadEffect(effect("v.ok = 0; v.y = q.bone_origin('root') + 1; v.ok = 1;"));
+		expect(def.diagnostics.some((d) => d.code === 'struct-query')).toBe(true);
+	});
+
+	it('a scenario value still answers them, member by member', () => {
+		const { v } = run(effect("v.o = q.bone_origin('root');"), 'entity', (n) => (n === 'query.bone_origin' ? 4 : undefined));
+		expect([v('o.x'), v('o.y'), v('o.z')]).toEqual([4, 4, 4]);
+	});
+
+	it('q.relative_block_has_any_tag reads 0 and says why (e16)', () => {
+		const { v, reasons } = run(effect("v.t = q.relative_block_has_any_tag(1, 0, 0, 'stone'); v.ok = 1;"), 'entity');
+		expect(v('t')).toBe(0);
+		expect(v('ok')).toBe(1);
+		expect(reasons[0]).toMatch(/Scope requires an Actor/);
+	});
+
+	it('q.life_time reads 0, and so does q.delta_time on an entity (e16, e17)', () => {
+		const on = run(effect('v.l = q.life_time; v.d = q.delta_time;'), 'entity');
+		expect([on.v('l'), on.v('d')]).toEqual([0, 0]);
+		expect(on.reasons).toEqual([]);
+		const alone = run(effect('v.d = q.delta_time;'), 'command');
+		expect(alone.v('d')).toBe(0);
+	});
+});

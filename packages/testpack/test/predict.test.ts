@@ -90,7 +90,8 @@ describe('engine predictions for the in-game test pack', () => {
  * (t04/t29), render-state checks the headless simulation doesn't model, and camera queries (t59-t64: the
  * prediction has no camera; the preview's query provider is unit-tested against them instead).
  */
-const NOT_REPLAYABLE = new Set(['t04', 't29', 't30', 't52.u0', 't56.y0', 't59', 't60', 't61', 't62', 't63', 't64']);
+// t78.f1/f2: one-sided billboards facing away from the camera (the prediction doesn't cull back faces)
+const NOT_REPLAYABLE = new Set(['t04', 't29', 't30', 't52.u0', 't56.y0', 't59', 't60', 't61', 't62', 't63', 't64', 't78.f1', 't78.f2']);
 
 describe('in-game fixtures (1.26.52)', () => {
 	const fixture = JSON.parse(readFileSync(join(__dirname, '..', 'fixtures', 'ingame-1.26.52.json'), 'utf8')) as {

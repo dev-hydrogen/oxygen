@@ -214,11 +214,12 @@ describe('locator frames measured in-game', () => {
 		expect(big.aabb()).toEqual({ min: [-0.6, 0, -0.6], max: [0.6, 3.6, 0.6] });
 	});
 
-	it('unbound effects start at the entity, or at the world origin with a locator (e10, e12)', () => {
-		const e = new EntityDummy({ ...DEFAULT_ENTITY, motion: { kind: 'line', length: 4, speed: 2 }, locators: [L('up', [0, 24, 0])] });
+	it('unbound effects start at the entity, or at the world origin with a locator, with the world’s axes (e10, e12, e13)', () => {
+		const e = new EntityDummy({ ...DEFAULT_ENTITY, motion: { kind: 'line', length: 4, speed: 2 }, yaw: 90, locators: [L('up', [0, 24, 0])] });
 		e.update(0.5);
 		expect(e.unboundStart('').position).toEqual(e.position);
 		expect(e.unboundStart('up').position).toEqual([0, 0, 0]);
+		expect(e.unboundStart('').rotation).toEqual([0, 0, 0, 1]);
 	});
 });
 

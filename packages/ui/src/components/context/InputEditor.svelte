@@ -16,6 +16,8 @@
 		value: InputValue | undefined;
 		/** what the preview used last (live) */
 		live?: Value | undefined;
+		/** how to show it instead, when it isn't one value (a struct query's members) */
+		liveText?: string;
 		/** argument lists this query was called with, for filling a table */
 		seenArgs?: string[];
 		onchange: (value: InputValue | undefined) => void;
@@ -24,7 +26,7 @@
 		description?: string;
 	}
 
-	let { name, kind, type, dynamic = false, value, live, seenArgs = [], onchange, pinned = false, onpin, description }: Props = $props();
+	let { name, kind, type, dynamic = false, value, live, liveText, seenArgs = [], onchange, pinned = false, onpin, description }: Props = $props();
 
 	const mode = $derived<InputKind | 'none'>(value === undefined ? 'none' : inputKind(value));
 	const MODES = $derived<{ id: InputKind | 'none'; label: string }[]>([
@@ -152,7 +154,7 @@
 			<span class="dim">{Object.keys(table.table).length} argument value{Object.keys(table.table).length === 1 ? '' : 's'}</span>
 		{/if}
 	</div>
-	<span class="live ox-num" title="What the preview used last">{showValue(live)}</span>
+	<span class="live ox-num" title="What the preview used last">{liveText ?? showValue(live)}</span>
 	{#if onpin}
 		<button class="pin" class:on={pinned} aria-pressed={pinned} disabled={mode === 'none'} title={pinned ? 'Pinned: written before every update. The game never does this.' : 'Pin: write this value before every update instead of only at spawn'} onclick={() => onpin?.(!pinned)}>
 			<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 2h4l-.5 4 2.5 2v1H4V8l2.5-2zM8 9v5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" /></svg>

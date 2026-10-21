@@ -51,7 +51,7 @@ export function runIsolated(world: ParticleWorld, e: EmitterInstance, expr: Comp
 		env.trace = trace;
 	}
 	const after = world.snapshotVars(e.vars);
-	const raised = [...world.errors.entries()].filter(([k]) => k.includes('|(evaluate)|')).map(([, x]) => (x.detail ? `${x.code}: ${x.detail}` : x.code));
+	const raised = [...world.errors.entries()].filter(([k]) => k.includes('|(evaluate)|')).map(([, x]) => (x.detail ? `${x.code}: ${x.detail.replace('|', ' (')}${x.detail.includes('|') ? ')' : ''}` : x.code));
 	e.vars.length = 0;
 	for (let k = 0; k < vars.length; k++) e.vars[k] = vars[k];
 	world.temps.v = temps.v;

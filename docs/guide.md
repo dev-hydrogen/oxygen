@@ -150,7 +150,7 @@ Turn on *Spawn on it* to play the effect the way an animation or animation contr
   them: an unturned locator points X to the entity's left, Y down and Z behind it, so an effect that rises
   without a locator falls on one. Without a locator X points to its right, Y up and Z behind it.
 - **Follows it:** off is `bind_to_actor: false`. The effect starts where the entity stands and stays there, or
-  at the world origin when it has a locator, as in the game.
+  at the world origin when it has a locator, with the world's axes, as in the game.
 - **Movement and facing:** stand still facing any way, walk a circle, a line or a path, or bob. Effects follow,
   but the game adds none of the entity's speed to their particles.
 - **Scale and size:** `minecraft:scale` and the collision box that `entity_aabb` fills.

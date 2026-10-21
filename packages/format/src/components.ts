@@ -1,7 +1,7 @@
 /**
  * Particle component catalog: what each component and field is, which phase of the game's update loop
  * evaluates it, and the value the game uses when it's missing or broken. Defaults marked `measured` were
- * verified in-game; the rest follow the bedrock-particles skill.
+ * verified in-game; the rest follow the documentation and creators' notes.
  */
 
 export type Phase = 'setup' | 'emitter' | 'spawn' | 'particle' | 'render';

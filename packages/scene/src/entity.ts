@@ -396,10 +396,10 @@ export class EntityDummy {
 
 	/**
 	 * Where an unbound effect (bind_to_actor: false) starts: at the entity without a locator, at the world origin
-	 * with one (e10, e12). It stays there.
+	 * with one (e10, e12). It stays there, with the world's axes rather than the entity's (e13).
 	 */
 	unboundStart(locator = this.settings.locator): { position: Vec3; rotation: Quat } {
 		const has = !!locator && this.locators.some((l) => l.name === locator);
-		return has ? { position: [0, 0, 0], rotation: [0, 0, 0, 1] } : { position: [...this.position], rotation: this.rotation };
+		return { position: has ? [0, 0, 0] : [...this.position], rotation: [0, 0, 0, 1] };
 	}
 }

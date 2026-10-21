@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ENTITY_TESTS, RIG_EFFECTS, rigBehavior, rigClient, rigGeometry, rigProbes, rigTexture } from './entity';
+import { ENTITY_TESTS, RIG_EFFECTS, RIG_KINDS, rigBehaviors, rigClients, rigGeometry, rigProbes, rigTexture } from './entity';
 import { MARKERS, TESTS, probeCurves, probeEvents, type Json, type TestCase } from './tests';
 import { testTextureSets, testTextures } from './textures';
 
@@ -171,26 +171,27 @@ export function generate(outDir: string) {
 		writeJson(join(rp, 'particles', `rig_${name}.json`), json);
 	}
 	writeJson(join(rp, 'models', 'entity', 'oxygen_rig.geo.json'), rigGeometry());
-	const client = rigClient();
-	writeJson(join(rp, 'entity', 'oxygen_rig.entity.json'), client.entity);
+	const client = rigClients();
+	for (const [kind, e] of Object.entries(client.entities)) writeJson(join(rp, 'entity', `oxygen_${kind}.entity.json`), e);
 	writeJson(join(rp, 'animations', 'oxygen_rig.animation.json'), client.animations);
 	writeJson(join(rp, 'animation_controllers', 'oxygen_rig.animation_controllers.json'), client.controllers);
 	writeJson(join(rp, 'render_controllers', 'oxygen_rig.render_controllers.json'), client.renderController);
 	mkdirSync(join(rp, 'textures', 'entity'), { recursive: true });
 	writeFileSync(join(rp, 'textures', 'entity', 'oxygen_rig.png'), rigTexture());
-	writeJson(join(bp, 'entities', 'oxygen_rig.json'), rigBehavior());
+	for (const [kind, e] of Object.entries(rigBehaviors())) writeJson(join(bp, 'entities', `oxygen_${kind}.json`), e);
 	const variants = new Map(rigProbes().map((r) => [r.probe, r.variant]));
 	ENTITY_TESTS.forEach((test, k) => {
 		const index = TESTS.length + k;
 		const z = rowZ(index);
 		const spacing = test.spacing ?? LAYOUT.probeSpacing;
-		const fn: string[] = [`# ${test.id}: ${test.title}`, cameraFor(test, index, 'front'), 'event entity @e[type=oxygen:rig] oxygen:despawn'];
+		const fn: string[] = [`# ${test.id}: ${test.title}`, cameraFor(test, index, 'front'), ...Object.keys(RIG_KINDS).map((k) => `event entity @e[type=oxygen:${k}] oxygen:despawn`)];
 		checklist.push(`## ${test.id} — ${test.title}`, '', `**Question:** ${test.question}`, '', `**Engine assumption:** ${test.assumption}`, '', `Wait ${test.wait}s, then screenshot.`, '');
 		test.probes.forEach((p, j) => {
 			const x = j * spacing;
 			const v = variants.get(p)!;
 			fn.push(`setblock ${x} ${LAYOUT.floorY} ${z} ${MARKERS[j % MARKERS.length]}_wool`);
-			fn.push(`summon oxygen:rig ${x} ${LAYOUT.floorY + 1} ${z} ${p.yaw ?? 0} 0 oxygen:v${v}`);
+			for (const b of p.blocks ?? []) fn.push(`setblock ${x + b.dx} ${LAYOUT.floorY + 1 + b.dy} ${z + b.dz} ${b.block}`);
+			fn.push(`summon oxygen:${p.rig ?? 'rig'} ${x} ${LAYOUT.floorY + 1} ${z} ${p.yaw ?? 0} 0 oxygen:v${v}`);
 			if (p.move) fn.push(`scriptevent oxygen:move ${JSON.stringify({ variant: v, ...p.move })}`);
 			for (const l of p.later ?? []) fn.push(`scriptevent oxygen:later ${JSON.stringify({ variant: v, after: l.after, command: l.command })}`);
 			checklist.push(`- **${p.id}** (${MARKERS[j % MARKERS.length]}): ${p.reads}`);

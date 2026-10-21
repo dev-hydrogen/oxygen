@@ -1,4 +1,4 @@
-import { getMathFunction, getQuery, molangMetadata, type QueryInfo } from '@oxygen/metadata';
+import { explainQueryError, getMathFunction, getQuery, molangMetadata, queryExists, type QueryInfo } from '@oxygen/metadata';
 import {
 	analyze,
 	compile,
@@ -231,12 +231,12 @@ export interface CompletionResult {
 
 const KEYWORD_ITEMS: CompletionItem[] = [
 	{ label: 'return', type: 'keyword', info: 'Ends the expression with a value. Without it, an expression with statements evaluates to 0.' },
-	{ label: 'loop', apply: 'loop(', type: 'keyword', info: 'loop(count, { … }) — at most 1024 iterations.' },
+	{ label: 'loop', apply: 'loop(', type: 'keyword', info: 'loop(count, { … }) — a fractional count rounds up; break and continue work.' },
 	{ label: 'break', type: 'keyword', info: 'Leaves the innermost loop.' },
 	{ label: 'continue', type: 'keyword', info: 'Skips to the next loop iteration.' },
 ];
 
-/** Patterns from the bedrock-particles skill, as fill-in templates */
+/** Common particle Molang patterns, as fill-in templates */
 export const SNIPPETS: CompletionItem[] = [
 	{
 		label: 'index',
@@ -264,7 +264,7 @@ export const SNIPPETS: CompletionItem[] = [
 		label: 'loop',
 		type: 'snippet',
 		detail: 'loop with a body',
-		info: 'loop(count, { … }): at most 1024 iterations; break and continue work.',
+		info: 'loop(count, { … }): a fractional count rounds up (loop(2.4) runs 3 times); break and continue work.',
 		snippet: 'loop(${1:10}, {\n  ${2:t.i = t.i + 1;}\n});',
 	},
 	{
@@ -361,7 +361,7 @@ export function complete(src: string, pos: number, ctx: MolangContext = {}, expl
 			return { from: nameFrom, to, items: names.map((n) => ({ label: n.replace(/^temp\./, ''), type: 'variable' as const, detail: 'temp' })) };
 		}
 		case 'query': {
-			const items = molangMetadata.queries.map((q) => queryItem(q));
+			const items = molangMetadata.queries.filter((q) => queryExists(q.name)).map((q) => queryItem(q));
 			return { from: nameFrom, to, items };
 		}
 		case 'math': {
@@ -522,7 +522,7 @@ export function diagnose(src: string, ctx: MolangContext = {}): LangDiagnostic[]
 	const expr = compile(stripComments(src), {
 		symbols: scratchSymbols,
 		features: ctx.features ?? LATEST_FEATURES,
-		queryExists: (n) => getQuery(n) !== undefined,
+		queryExists,
 		context: 'particle',
 	});
 	const fallback = ctx.fallback === undefined ? null : ctx.fallback;
@@ -535,7 +535,7 @@ export function diagnose(src: string, ctx: MolangContext = {}): LangDiagnostic[]
 			to: Math.max(d.end, d.start + 1),
 			severity: d.severity,
 			code: d.code,
-			message: isError ? `${d.message}. ${dropsField(fallback)}` : d.message,
+			message: isError ? `${(d.code === 'unknown-query' ? explainQueryError(d.message) : d.message).replace(/\.$/, '')}. ${dropsField(fallback)}` : d.message,
 		});
 	}
 	if (!hasError) {

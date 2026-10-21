@@ -1,5 +1,6 @@
 import { COMPONENT_BY_ID, type FieldInfo, type Phase } from '@oxygen/format';
 import { BUILTIN_VARIABLES, type VariableInfo, type VariableUse } from '@oxygen/lang';
+import { explainQueryError } from '@oxygen/metadata';
 import { analyze, type Analysis } from 'molangjs';
 import type { EffectDefinition, EventNode, MolangField } from 'wintersky';
 
@@ -65,7 +66,7 @@ const PHASE_BASE: Record<FieldPhase, number> = { setup: 0, emitter: 1000, spawn:
 
 /**
  * Evaluation order inside each phase (component id, field key prefix), as the engine runs it. Matches
- * wintersky's emitter.ts and the bedrock-particles skill.
+ * wintersky's emitter.ts and the game (the in-game test pack).
  */
 const ORDER: [string, string][] = [
 	// setup: lifetime & rate setup read pre-creation values, then creation_expression
@@ -286,7 +287,8 @@ export function analyzeEffect(def: EffectDefinition, options: AnalysisOptions = 
 	for (const d of def.diagnostics) {
 		const ref = byPath.get(d.path);
 		const broken = ref?.field.broken;
-		let message = d.message;
+		let message = d.code === 'unknown-query' ? explainQueryError(d.message) : d.message;
+		if (d.severity === 'error' && (broken || (!ref && (d.start > 0 || d.end > 0)))) message = message.replace(/\.$/, '');
 		if (d.severity === 'error' && broken) {
 			message += ref.fallback === null ? '. The game ignores this whole field.' : `. The game ignores this whole field and uses ${ref.fallback}.`;
 		} else if (d.severity === 'error' && !ref && (d.start > 0 || d.end > 0)) {
@@ -340,12 +342,23 @@ export function analyzeEffect(def: EffectDefinition, options: AnalysisOptions = 
 		}
 	}
 
+	// structs (t67, t68): setting v.a.b sets the struct v.a; v.c = v.a fills v.c's members, so a member counts as
+	// set wherever the nearest struct above it is
+	for (const [name, list] of [...writes]) for (const parent of structsOf(name)) for (const w of list) addWrite(parent, w.rank, w.use);
+	const writesOf = (name: string): Write[] => {
+		for (const n of [name, ...structsOf(name).reverse()]) {
+			const ws = writes.get(n);
+			if (ws?.length) return ws;
+		}
+		return [];
+	};
+
 	const external = options.external ?? {};
 	const parents = options.parents ?? {};
 	const names = new Set<string>([...writes.keys(), ...reads.keys(), ...Object.keys(external)]);
 	const variables: VariableInfo[] = [...names].sort().map((name) => ({
 		name,
-		writes: (writes.get(name) ?? []).map((w) => w.use),
+		writes: writesOf(name).map((w) => w.use),
 		reads: reads.get(name) ?? [],
 		builtin: BUILTIN_VARIABLES[name],
 		curve: def.curves.some((c) => c.name === name),
@@ -356,14 +369,14 @@ export function analyzeEffect(def: EffectDefinition, options: AnalysisOptions = 
 	for (const f of fields) {
 		if (!f.analysis || f.rank === Infinity) continue;
 		const writtenHere = new Map<string, number>();
-		for (const w of f.analysis.writes) if (!writtenHere.has(w.name)) writtenHere.set(w.name, w.order);
+		for (const w of f.analysis.writes) for (const n of [w.name, ...structsOf(w.name)]) if (!writtenHere.has(n)) writtenHere.set(n, w.order);
 		const reported = new Set<string>();
 		for (const r of f.analysis.reads) {
 			if (r.ns !== 'variable' || r.guarded || reported.has(r.name)) continue;
 			if (BUILTIN_VARIABLES[r.name] || external[r.name]) continue;
-			const local = writtenHere.get(r.name);
+			const local = [r.name, ...structsOf(r.name)].map((n) => writtenHere.get(n)).find((o) => o !== undefined);
 			if (local !== undefined && local < r.order) continue;
-			const ws = writes.get(r.name) ?? [];
+			const ws = writesOf(r.name);
 			if (ws.some((w) => w.rank < f.rank)) continue;
 			reported.add(r.name);
 			const short = r.name.replace(/^variable\./, 'v.');
@@ -525,5 +538,12 @@ function structuralChecks(def: EffectDefinition, options: AnalysisOptions, field
 	if (def.particle.collision && !def.particle.dynamic) {
 		add(`${C}/minecraft:particle_motion_collision`, 'info', 'collision-needs-dynamic', 'Collision only moves particles that have Dynamic motion.');
 	}
+	return out;
+}
+
+/** The structs a dotted name is a member of, outermost first: `variable.a.b.c` → `variable.a`, `variable.a.b` */
+function structsOf(name: string): string[] {
+	const out: string[] = [];
+	for (let dot = name.indexOf('.', name.indexOf('.') + 1); dot !== -1; dot = name.indexOf('.', dot + 1)) out.push(name.slice(0, dot));
 	return out;
 }

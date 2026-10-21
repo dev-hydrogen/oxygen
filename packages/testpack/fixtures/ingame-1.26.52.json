@@ -8,7 +8,15 @@
 		"Double-quoted string: 'unrecognized token: \"a\";'",
 		"Unknown/unsupported query: 'Failed to resolve query query.x.  Either the query does not exist or it is not supported in this context.' + 'unrecognized token'",
 		"Unknown component: '[Effects][error] ... Unrecognized component name 'oxygen:meta' in particle effect'",
-		"Unset variable read at runtime: 'Error: unhandled request for unknown variable 'variable.x''"
+		"Unset variable read at runtime: 'Error: unhandled request for unknown variable 'variable.x''",
+		"Queries outside the default set (q.heightmap, q.above_top_solid, q.noise, q.has_biome_tag, q.any_tag): 'Failed to resolve query … not supported in this context', in unused events too (t66)",
+		"?? whose left side has a member (v.a.b ?? 5, (v.z.b + 1) ?? 7): 'found left-hand-side of ?? expression that isn't a direct-variable reference - this is unsupported at this time' at load, but the field is kept and ?? works (t67)",
+		"A temp member assignment (t.a.b = 2): 'left side of an assignment expression can only use temp variables if they are on their own and not part of a more complicated expression' at load, but it still runs (t67)",
+		"Reading a missing member at runtime: 'unable to find member variable .b' / 'unhandled request for unknown variable '.b'' (t67)",
+		"q.bone_origin('x').y straight off the call: 'found multiple operations without a combining operation' (the field is dropped, e15)",
+		"emitter_local_space with rotation and no position: 'We do not support rotation being true and position being false' (the component is ignored: world space, e13)",
+		"Bone queries in an entity's particle Molang: 'Could not find specified bone for query.bone_origin' for every bone, root included (e15, e17)",
+		"q.relative_block_has_any_tag in particle fields and pre_effect_script: 'cannot be evaluated with the current scope. Scope requires an Actor.' (reads 0, e16)"
 	],
 	"results": {
 		"t01": {
@@ -121,7 +129,7 @@
 			"p6": "visible",
 			"p7": "invisible",
 			"p8": "edge-on",
-			"conclusion": "direction_y with dir +X lies flat facing +Y (skill table predicts a vertical quad) — full axis matrix in t34."
+			"conclusion": "direction_y with dir +X lies flat facing +Y (the documented axis table predicts a vertical quad) — full axis matrix in t34."
 		},
 		"t16": {
 			"p1": false,
@@ -237,13 +245,13 @@
 			"conclusion": "Per-expression versions 6–11 use right-assoc ternary and && before ||; with t26: versions 3–5 use the old rules → threshold is 6 for both."
 		},
 		"t34": {
-			"conclusion": "direction_x: horizontal directions follow the skill (X=d, Y=up, normal=X×Y). Vertical d: normal -Z, X=d. Zero: invisible."
+			"conclusion": "direction_x: horizontal directions follow the documented table (X=d, Y=up, normal=X×Y). Vertical d: normal -Z, X=d. Zero: invisible."
 		},
 		"t35": {
 			"conclusion": "direction_y: horizontal d → quad lies flat facing +Y (Y=d). Vertical d → faces +Z (Y=d; -Y upside down). Zero: invisible."
 		},
 		"t36": {
-			"conclusion": "direction_z: horizontal d → normal = d, Y up (skill). Vertical d → normal = -d with Y=+Z (d=-Y faces up, X=-X). Zero: invisible."
+			"conclusion": "direction_z: horizontal d → normal = d, Y up (as documented). Vertical d → normal = -d with Y=+Z (d=-Y faces up, X=-X). Zero: invisible."
 		},
 		"t37": {
 			"conclusion": "lookat_direction rotates about d toward the camera; edge-on when d is along the view axis. Glyph roll needs a render comparison."
@@ -559,6 +567,53 @@
 			},
 			"conclusion": "Noon, vanilla lighting, VV 'Performance' preset, probes facing a camera that looks south. Classic is almost identity (lit 0.984). Vibrant Visuals: lit and unlit particles look the same (both lit, mostly by the blue sky since billboards face away from the overhead sun); strong highlight compression (grey 64/128/255 → R 82/120/153); an emissive texture set makes particles glow near white; additive grey adds only ~+10 over the sky. Distance haze is small at 14 blocks. VV needs the resource pack's manifest to declare capabilities ['pbr'], otherwise the mode is greyed out. 'vv' values at 3 blocks (v2-v4, v6 from 14 blocks); 'vvFar' at 14 blocks.",
 			"vvByTime": {
+				"0": {
+					"v1": [
+						38,
+						44,
+						55
+					],
+					"v2": [
+						38,
+						44,
+						55
+					],
+					"v3": [
+						41,
+						46,
+						58
+					],
+					"v4": [
+						74,
+						82,
+						99
+					],
+					"v5": [
+						253,
+						249,
+						252
+					],
+					"v6": [
+						253,
+						249,
+						252
+					],
+					"v7": [
+						75,
+						83,
+						102
+					],
+					"v8": [
+						26,
+						28,
+						33
+					],
+					"sky": [
+						45,
+						44,
+						46
+					]
+				},
 				"0.5": {
 					"v1": [
 						122,
@@ -651,53 +706,6 @@
 						134,
 						119,
 						135
-					]
-				},
-				"0": {
-					"v1": [
-						38,
-						44,
-						55
-					],
-					"v2": [
-						38,
-						44,
-						55
-					],
-					"v3": [
-						41,
-						46,
-						58
-					],
-					"v4": [
-						74,
-						82,
-						99
-					],
-					"v5": [
-						253,
-						249,
-						252
-					],
-					"v6": [
-						253,
-						249,
-						252
-					],
-					"v7": [
-						75,
-						83,
-						102
-					],
-					"v8": [
-						26,
-						28,
-						33
-					],
-					"sky": [
-						45,
-						44,
-						46
 					]
 				},
 				"0.25": {
@@ -847,8 +855,230 @@
 			"p2": "local triad gone with the entity; world dot and rising particles stay, no new ones",
 			"p3": "bind_to_actor false without a locator: at the entity, stays",
 			"conclusion": "A steady emitter on an entity also holds 1000 particles. When the entity goes, its emitters stop, particles in its space vanish and world-space ones live on. bind_to_actor: false without a locator starts the effect where the entity stands."
+		},
+		"t66": {
+			"g1": true,
+			"g2": true,
+			"g3": true,
+			"g4": true,
+			"g5": true,
+			"g6": true,
+			"g7": false,
+			"g8": false,
+			"g9": true,
+			"sizes": "g1 0.3; g2–g6 1.0 (the default: dropped at load)",
+			"conclusion": "Queries the game's metadata puts outside the default query set (world_gen: q.heightmap, q.above_top_solid, q.noise, the biome tags; tags: q.any_tag) are load errors in particle Molang, like unknown queries: the field falls back to its default, a script is dropped whole (g7, g8), and unused events are checked too (g9)."
+		},
+		"t67": {
+			"m1": true,
+			"m2": true,
+			"m3": true,
+			"m4": true,
+			"m5": true,
+			"m6": false,
+			"m7": true,
+			"m8": true,
+			"m9": false,
+			"m10": true,
+			"conclusion": "Dotted names are members of a struct. v.a.b = 1 makes v.a a struct; v.c = v.a copies it (m5); reading the struct v.a doesn’t abort (m6). ?? with a member on its left is reported at load as unsupported, but the field is kept and ?? catches a missing member at runtime (m2–m4, m8), with a runtime error for the missing member. Reading a missing member without ?? aborts (m9). A temp member assignment is reported at load but still runs (m10)."
+		},
+		"t68": {
+			"s1": true,
+			"s2": true,
+			"s3": true,
+			"s4": true,
+			"s5": true,
+			"sizes": "s1 0.3, s2 0.1, s3 0.3, s4 0.3, s5 0.3",
+			"conclusion": "A struct read as a number is 0 (s1). Setting a member (v.a.b = 2) replaces a number in v.a (s2), but setting a number (v.a = 5) leaves the members (s3). Copying a struct copies every member (s4) as a copy, not a reference (s5)."
+		},
+		"e13": {
+			"conclusion": "On an entity (no locator): an 'emitter' child of a world-space parent appears at the particle, for creation, timeline and expiration events; a parent with local position (with or without rotation) puts timeline and expiration children at the emitter, and its creation children aren't near the entity. emitter_local_space with rotation and no position is rejected at load and behaves as world space. 'emitter_bound' children appear at the emitter (hidden in the body here: see e14). 'particle' and 'particle_with_velocity' children appear nowhere near the entity or the particle (they exist: e17). bind_to_actor false: the emitter's axes are the world's (its particle went east, not along the entity's X), creation children aren't near it, timeline and expiration ones (emitter_bound too) are at the particle, as for /particle."
+		},
+		"e14": {
+			"conclusion": "As e13, on locator up: world-space 'emitter' children at the particle (also turned, yaw 90), local-space timeline and expiration ones at the emitter, local-space creation ones not near it; 'emitter_bound' children at the emitter; single-particle children not near it."
+		},
+		"e15": {
+			"r15": "size 1.0 (dropped at load)",
+			"conclusion": "In an entity's particle Molang, every bone query fails at runtime with 'Could not find specified bone' (root included); the struct reads 0 (e29, t80 b2), so every readout's bar had length 0, in pre_effect_script too. Member access straight off the call (q.bone_origin('qbox').y) is a parse error: the field is dropped."
+		},
+		"e16": {
+			"k": "every square 0.1",
+			"conclusion": "q.relative_block_has_any_tag can't run in particle Molang or pre_effect_script ('Scope requires an Actor'): it reads 0 and the expression carries on. q.life_time and q.delta_time read 0 in an entity's particles and pre_effect_script. q.is_alive turns 0 when the entity dies, before it is removed: dots spawned during the death were offset; the emitter runs until the entity is removed."
+		},
+		"e17": {
+			"x1": "red, blue and yellow squares 0.3",
+			"x2": "red, blue and yellow squares 0.3",
+			"b1": "0.3",
+			"b2": "0.1",
+			"c3": "0.3",
+			"c4": "0.3",
+			"c5": "0.3",
+			"conclusion": "The children e13/e14 couldn't find exist: single-particle children and local-space creation children ran (they set their temps). A bone query that finds no bone doesn't stop the expression when assigned (v.o = q.bone_origin('root'); goes on), but aborts it when used as a number (q.bone_origin('root') + 1). q.life_time and q.delta_time read 0 without aborting."
+		},
+		"e18": {
+			"conclusion": "Children 0.6 to 1.2 blocks across, so one at the feet would show round the body: the particle children and local-space creation children are not at the feet either (world-space and local-space timeline children appear as in e13/e14). Where they go is open (not near the world origin either, with the entity in range)."
+		},
+		"t69": {
+			"c1": true,
+			"c2": true,
+			"c3": true,
+			"o1": true,
+			"o2": true,
+			"o3": true,
+			"o4": true,
+			"g1": true,
+			"g2": false,
+			"conclusion": "Variables carry between the elements of size (W→H), tint (R→A) and custom_direction (X→Z). Render preparation runs per_render_expression, then size, then UV, then tint. A gradient evaluates only the stop colours its interpolant uses."
+		},
+		"t70": {
+			"r1": true,
+			"r2": false,
+			"r3": true,
+			"conclusion": "Render preparation sees a later particle age than the update’s motion. A render counter reset in the emitter’s per_update stays in step (one render traversal per update, same order)."
+		},
+		"t71": {
+			"x1": true,
+			"x2": false,
+			"x3": false,
+			"conclusion": "A multi-statement expiration_expression without return never expires. A particle that expires on its first update is never drawn."
+		},
+		"t72": {
+			"l1": false,
+			"l2": true,
+			"l3": true,
+			"l4": true,
+			"l5": false,
+			"l6": true,
+			"l7": true,
+			"l8": true,
+			"b1": true,
+			"b2": true,
+			"b3": true,
+			"b4": true,
+			"conclusion": "loop has no 1024 cap (2000 ran; t78: 200,000); a fractional count rounds up (2.5 → 3); a negative count runs 0 times; break, continue and return work. Unchosen branches and short-circuited operands don’t run. An assignment has a value."
+		},
+		"t73": {
+			"s1": true,
+			"s2": true,
+			"s3": true,
+			"s4": false,
+			"s5": true,
+			"n1": true,
+			"n2": true,
+			"k1": true,
+			"k2": true,
+			"k3": true,
+			"k4": true,
+			"sizes": "s1, s2: 1.0 (the default: load errors)",
+			"conclusion": "'a' < 'b' and 'a' + 'b' are load errors (\"only supports numerical arguments\"), so the field uses its default. An escaped quote parses. '1' != 1. Strings in variables compare. Temp names and namespaces are case-insensitive. 1e3, .5, 0.5f, true and false parse."
+		},
+		"t74": {
+			"e1": true,
+			"e2": true,
+			"m1": true,
+			"m2": true,
+			"m3": true,
+			"m4": true,
+			"m5": true,
+			"m6": true,
+			"r1": true,
+			"v1": true,
+			"v2": true,
+			"v3": true,
+			"conclusion": "The easing functions, inverse_lerp, lerprotate, trunc, copy_sign, atan2 (y first, degrees) and hermite_blend behave as documented; math.random is fresh per call; v.particle_random_* and c.* are unset in an emitter expression of a /particle effect; q.life_time reads 0 there."
+		},
+		"t75": {
+			"d1": "rose 2 blocks",
+			"d2": "held at the marker",
+			"f1": true,
+			"f2": "visible",
+			"f3": true,
+			"conclusion": "Parametric direction turns a moving particle’s velocity; relative_position overrides dynamic motion. derive_from_velocity followed a 0.005 blocks/s velocity with the default threshold (documented as 0.01)."
+		},
+		"t76": {
+			"c1": true,
+			"c2": true,
+			"c3": true,
+			"q1": "a row",
+			"q2": "one dot",
+			"q3": "a row of 5",
+			"conclusion": "bezier_chain ignores horizontal_range and jumps at a node with different left/right values; linear uses horizontal_range. spawn_rate is re-evaluated every update; max_particles is fixed for the loop; num_particles sees creation_expression."
+		},
+		"t77": {
+			"k1": false,
+			"k2": false,
+			"k3": true,
+			"conclusion": "An event child’s pre_effect_expression can’t read the parent’s variables, and the child’s creation_expression doesn’t see what pre_effect_expression set (it runs before it, t78). Temps set anywhere by the parent reach the child."
+		},
+		"t78": {
+			"p1": true,
+			"p2": true,
+			"p3": true,
+			"p4": true,
+			"p5": true,
+			"l1": true,
+			"l2": true,
+			"l3": true,
+			"l4": true,
+			"f1": false,
+			"f2": false,
+			"f3": false,
+			"conclusion": "An event child’s creation_expression runs before its pre_effect_expression; pre_effect can overwrite what creation set, and the emitter update sees it. loop(20000) and loop(200000) run in full; loop(2.4) runs 3 times and loop(0.5) once. One-sided direction_z particles moving away aren’t seen; a direction_z particle that never moves isn’t drawn."
+		},
+		"t79": {
+			"f1": "100 blocks: drawn",
+			"f2": "250 blocks: drawn",
+			"f3": "500: not drawn",
+			"f4": "1000: not drawn",
+			"f5": "3000: not drawn",
+			"conclusion": "Particles past the client’s render distance (336 blocks here) aren’t drawn."
+		},
+		"e19": {
+			"conclusion": "A looping emitter on an entity restarts as a new emitter each loop: age restarts, emitter randoms re-roll, creation_expression re-runs with fresh variables."
+		},
+		"e20": {
+			"conclusion": "Bone queries resolve in the entity’s own animation Molang (timeline keys and bone channels) on its default geometry: q.bone_rotation gives the geometry’s rotation (45). Origin and aabb values are not the geometry’s raw pivot and box; their frame is open. A missing bone logs “Could not find specified bone”."
+		},
+		"e21": {
+			"conclusion": "q.life_time, q.anim_time and q.delta_time are live in the entity’s animation Molang (they read 0 in its particles)."
+		},
+		"e22": {
+			"conclusion": "A property without client_sync isn’t on the client (“property does not exist”). float, bool and enum (as a string) properties are readable in particles. A float property with an integer range fails the whole properties block. q.rotation_to_camera follows the camera in an entity’s particles. q.distance_from_camera works in the entity’s animation."
+		},
+		"e23": {
+			"conclusion": "q.relative_block_has_any_tag works in the entity’s animation Molang, with world-aligned offsets; tool tags cover stone. q.above_top_solid is a load error there too: its timeline key is dropped whole, other keys run."
+		},
+		"e24": {
+			"conclusion": "A kill plane is in world axes: on an entity turned 90° the stream along its X wasn’t cut by the x plane."
+		},
+		"t80": {
+			"d1": "0.1",
+			"b1": "0.3",
+			"b2": "0.1",
+			"k1": "0.1",
+			"k2": "0.3",
+			"v1": "0.3",
+			"conclusion": "In a /particle effect q.delta_time reads 0; a bone query logs 'Could not find specified bone', fills the struct with zeros (the members have a value) and the expression goes on; q.relative_block_has_any_tag logs 'Scope requires an Actor', reads 0 and the expression goes on; q.variant reads 0."
+		},
+		"e28": {
+			"conclusion": "q.heightmap, q.above_top_solid, q.noise, q.has_biome_tag and q.any_tag are load errors (\"Failed to resolve query … not supported in this context\") in particle effects attached to an entity and in the entity’s own animation, as in /particle effects (t66)."
+		},
+		"e29": {
+			"conclusion": "Particle Molang and pre_effect_script never find a bone on an entity, whatever its queryable_geometry (default, a second geometry, unset): 'Could not find specified bone', the struct reads 0. In the entity's own animation Molang queryable_geometry picks the geometry ('alt' read the alt geometry's bones); with one geometry and no queryable_geometry that geometry answers; with two geometries (default and alt) and none selected, the alt one answered (qbox at 30°, altbone found), in either listing order (e31). A failed lookup there also logs the error and reads 0."
+		},
+		"e30": {
+			"p1": "qbox origin (4, 16, 0); qz (2, -6, 5); root (0, 24, 0); ash (0, 0, 0); qbox aabb (-1, -2, -1)-(1, 2, 1); brx TRS t (0, 24, 0), r (90, 0, 0)",
+			"p2": "the same at yaw 90",
+			"conclusion": "In the entity's own animation (read exactly, value x 16 in binary): q.bone_origin returns the geometry pivot as (x, 24 - y, z) in model pixels, the initial pivot (an animation moving the bone doesn't change it, parents don't either). q.bone_aabb returns the bone's cube box centred on 0 (a 2x4x2 cube at (3, 6, -1) gave (-1, -2, -1)-(1, 2, 1)): its size, not its place. q.bone_orientation_trs gave t = the pivot as written (0, 24, 0) and r = the geometry rotation (90, 0, 0), although an error said it couldn't find the bone. None of it turns with the entity's yaw."
+		},
+		"e31": {
+			"q": "0.2 (qbox at 30: alt)",
+			"a": "0.25 (altbone found)",
+			"conclusion": "With two geometries and no queryable_geometry, the non-default one (alt) answered whether it was listed first or second."
 		}
 	},
 	"entityDate": "2026-10-19",
-	"entityMethod": "BedrockMCP screenshots of the oxygen:rig entity tests (e01-e12): close-up top and front views of axis triads (X red, Y green, Z blue, thin at the emitter, thick at the +1 end) drawn in each emitter frame"
+	"entityMethod": "BedrockMCP screenshots of the oxygen:rig entity tests (e01-e12): close-up top and front views of axis triads (X red, Y green, Z blue, thin at the emitter, thick at the +1 end) drawn in each emitter frame",
+	"entityDate2": "2026-10-21",
+	"entityMethod2": "BedrockMCP screenshots (fixed views per run) and the content log; commands through the Oxygen /connect bridge. Entities more than 64 blocks from the camera cull their effects: views stayed within that."
 }

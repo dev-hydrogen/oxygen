@@ -67,6 +67,18 @@ describe('diagnose', () => {
 	it('flags unknown queries as load errors', () => {
 		expect(diagnose('q.not_a_query').some((d) => d.message.includes('Failed to resolve query'))).toBe(true);
 	});
+	it('treats queries outside the default query set as load errors, and says why', () => {
+		for (const src of ['q.heightmap(0, 0)', 'q.above_top_solid(0, 0)', "q.has_biome_tag('ocean')", "q.any_tag('x')"]) {
+			const d = diagnose(src, { fallback: 1 });
+			expect(d.length, src).toBe(1);
+			expect(d[0].code).toBe('unknown-query');
+			expect(d[0].message).toMatch(/particle Molang can't use/);
+			expect(d[0].message).toContain('uses 1');
+		}
+		expect(diagnose('q.heightmap(0, 0)')[0].message).toMatch(/^query\.heightmap is a world generation query/);
+		expect(diagnose('q.time_of_day + q.position(1)')).toEqual([]);
+		expect(complete('q.heightm', 9)?.items.some((i) => i.label.includes('heightmap')) ?? false).toBe(false);
+	});
 	it('warns about missing return in value fields', () => {
 		expect(diagnose('v.a = 1; v.a;', { expectsValue: true }).some((d) => d.code === 'missing-return')).toBe(true);
 	});

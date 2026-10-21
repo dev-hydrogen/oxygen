@@ -68,7 +68,7 @@ export interface ExtractResult {
 
 /**
  * Compute a subexpression once, in the first text, and use a variable for it everywhere. For a vector
- * the first text is X: it runs before Y and Z, so they can read what X sets (how the skill's position
+ * the first text is X: it runs before Y and Z, so they can read what X sets (how common position
  * patterns share work across axes). Only whole subexpressions are replaced.
  */
 export function extractToVariable(texts: string[], selection: string, variable: string): ExtractResult | { error: string } {

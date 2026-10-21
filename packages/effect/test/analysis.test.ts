@@ -38,6 +38,13 @@ describe('analyzeEffect', () => {
 		expect(idx('Billboard › Size W')).toBeLessThan(idx('Billboard › Size H'));
 	});
 
+	it('counts a struct as set by its members, and a copy as filling the members (t67, t68)', () => {
+		const a = analyzeEffect(load({ 'minecraft:emitter_initialization': { creation_expression: 'v.a.b = 1; v.c = v.a; v.d = v.c.b;' } }));
+		expect(a.problems.filter((p) => p.code === 'never-set' || p.code === 'read-before-write')).toEqual([]);
+		const unset = analyzeEffect(load({ 'minecraft:emitter_initialization': { creation_expression: 'v.d = v.q.b;' } }));
+		expect(unset.problems.some((p) => p.code === 'never-set' && p.message.startsWith('Nothing sets v.q.b'))).toBe(true);
+	});
+
 	it('reports reads that nothing has set yet', () => {
 		const a = analyzeEffect(
 			load({
