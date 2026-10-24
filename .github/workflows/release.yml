@@ -5,9 +5,11 @@ name: Release
 # Releases page.
 # Run it by hand (Actions › Release › Run workflow) to only build everything: the files are the run's artifacts.
 #
-# Publishing the extension is automatic when these repository secrets exist (otherwise those steps are skipped):
-#   VSCE_PAT  an Azure DevOps token with Marketplace › Manage, for the Visual Studio Marketplace
-#   OVSX_PAT  an Open VSX access token
+# The extension is published from tags:
+#   Open VSX                       trusted publishing (OIDC): registered on open-vsx.org for dev-hydrogen/oxygen and
+#                                  this file, so no token is stored
+#   Visual Studio Marketplace      when the VSCE_PAT secret exists (an Azure DevOps token with Marketplace › Manage);
+#                                  skipped otherwise
 on:
   push:
     tags: ['[0-9]*', 'v*']
@@ -100,6 +102,9 @@ jobs:
     needs: extension
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    permissions:
+      # Open VSX trusted publishing: the job's GitHub ID token is exchanged for a short-lived publishing token
+      id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -110,9 +115,6 @@ jobs:
         run: |
           if [ -z "$VSCE_PAT" ]; then echo "::notice::VSCE_PAT isn't set: skipping the Marketplace."; exit 0; fi
           npx --yes @vscode/vsce publish --packagePath *.vsix
+      # trusted publishing (registered on open-vsx.org for dev-hydrogen/oxygen, release.yml): no token is stored
       - name: Open VSX
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: |
-          if [ -z "$OVSX_PAT" ]; then echo "::notice::OVSX_PAT isn't set: skipping Open VSX."; exit 0; fi
-          npx --yes ovsx publish *.vsix
+        run: npx --yes ovsx@latest publish --trusted-publishing *.vsix
