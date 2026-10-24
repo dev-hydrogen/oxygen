@@ -14,6 +14,7 @@ export { readShareHash, shareLink } from './lib/share';
 export { ViewportScene } from './viewport/scene';
 export { DEFAULT_GIZMOS, type Gizmos } from './viewport/gizmos';
 export { createMersProvider, createTextureProvider } from './lib/textures';
+export { importTextureFile, pickTexture } from './lib/import-texture';
 
 /**
  * Mount the Oxygen editor into an element. `mode: 'preview'` mounts only the viewport (for a file edited in

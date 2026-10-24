@@ -27,11 +27,29 @@ class Segments {
 		this.pos = new Float32Array(max * 6);
 		this.col = new Float32Array(max * 6);
 		const g = new THREE.BufferGeometry();
-		g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
-		g.setAttribute('color', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
+		this.attach(g);
 		this.object = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, transparent: true, opacity: 0.9 }));
 		this.object.renderOrder = renderOrder;
 		this.object.frustumCulled = false;
+	}
+
+	private attach(g: THREE.BufferGeometry) {
+		g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
+		g.setAttribute('color', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
+	}
+
+	/** Room for `max` segments (the limits are settings) */
+	capacity(max: number) {
+		if (max === this.max) return;
+		this.max = max;
+		this.pos = new Float32Array(max * 6);
+		this.col = new Float32Array(max * 6);
+		// a buffer's size is fixed once it's on the GPU: a new geometry
+		const old = this.object.geometry;
+		const g = new THREE.BufferGeometry();
+		this.attach(g);
+		this.object.geometry = g;
+		old.dispose();
 	}
 
 	begin() {
@@ -73,6 +91,59 @@ class Segments {
 
 const PER_PARTICLE = 12;
 
+type Pool = { count: number; id: ArrayLike<number> };
+type Owner = { id: number; pool: Pool };
+
+/**
+ * Which particles get a helper when there are more than it may draw: the same ones from frame to frame (a
+ * particle keeps its helper while it lives), topped up with an even sample of the rest as they die.
+ */
+export class StablePick {
+	private kept = new Set<number>();
+
+	pick<E extends Owner>(emitters: readonly E[], limit: number, eligible: (e: E) => boolean = () => true, first: { emitter: number; particle: number } | null = null): [E, number][] {
+		const out: [E, number][] = [];
+		const next = new Set<number>();
+		let total = 0;
+		for (const e of emitters) if (eligible(e)) total += e.pool.count;
+		if (first)
+			for (const e of emitters) {
+				if (e.id !== first.emitter || !eligible(e)) continue;
+				for (let i = 0; i < e.pool.count; i++)
+					if (e.pool.id[i] === first.particle) {
+						out.push([e, i]);
+						next.add(first.particle);
+					}
+			}
+		for (const e of emitters) {
+			if (!eligible(e)) continue;
+			for (let i = 0; i < e.pool.count && out.length < limit; i++) {
+				const id = e.pool.id[i];
+				if (this.kept.has(id) && !next.has(id)) {
+					out.push([e, i]);
+					next.add(id);
+				}
+			}
+		}
+		const room = limit - out.length;
+		if (room > 0) {
+			const stride = Math.max(1, Math.ceil((total - out.length) / room));
+			let k = 0;
+			for (const e of emitters) {
+				if (!eligible(e)) continue;
+				for (let i = 0; i < e.pool.count && out.length < limit; i++) {
+					const id = e.pool.id[i];
+					if (next.has(id) || k++ % stride) continue;
+					out.push([e, i]);
+					next.add(id);
+				}
+			}
+		}
+		this.kept = next;
+		return out;
+	}
+}
+
 /**
  * Facing gizmo: for the inspected particle and a sample of others, the axes the renderer actually
  * builds (right red, up green, face normal blue) and the direction they were built from (amber; grey
@@ -81,25 +152,15 @@ const PER_PARTICLE = 12;
  */
 export class FacingOverlay {
 	private seg = new Segments(64 * PER_PARTICLE, 16);
+	private picker = new StablePick();
 	readonly object = this.seg.object;
 
-	update(world: ParticleWorld, camera: CameraState, selection: { emitter: number; particle: number } | null, sample = 48) {
+	update(world: ParticleWorld, camera: CameraState, selection: { emitter: number; particle: number } | null, limit = 64) {
 		const seg = this.seg;
+		seg.capacity(limit * PER_PARTICLE);
 		seg.begin();
-		const picks: [number, number][] = [];
-		let total = 0;
-		for (const e of world.emitters) if (e.def.particle.billboard) total += e.pool.count;
-		const stride = Math.max(1, Math.ceil(total / sample));
-		world.emitters.forEach((e, ei) => {
-			if (!e.def.particle.billboard) return;
-			if (selection && e.id === selection.emitter) {
-				const i = e.pool.indexOfId(selection.particle);
-				if (i >= 0) picks.unshift([ei, i]);
-			}
-			for (let i = 0; i < e.pool.count; i += stride) picks.push([ei, i]);
-		});
-		for (const [ei, i] of picks.slice(0, 64)) {
-			const e = world.emitters[ei];
+		const picks = this.picker.pick(world.emitters, limit, (e) => !!e.def.particle.billboard, selection);
+		for (const [e, i] of picks) {
 			const f = e.particleFacing(i, camera);
 			if (!f) continue;
 			const p = f.position;
@@ -148,8 +209,9 @@ export class EmitterMarkers {
 	private seg = new Segments(256 * 3, 12);
 	readonly object = this.seg.object;
 
-	update(emitters: Iterable<{ id: number; position: Vec3; rotation: Quat; expired: boolean }>, camera: CameraState, skip: number | null) {
+	update(emitters: Iterable<{ id: number; position: Vec3; rotation: Quat; expired: boolean }>, camera: CameraState, skip: number | null, limit = 256) {
 		const seg = this.seg;
+		seg.capacity(limit * 3);
 		seg.begin();
 		const axis: Vec3 = [0, 0, 0];
 		for (const e of emitters) {
@@ -192,12 +254,13 @@ export class ShapeGizmo {
 	private seg = new Segments(64 * 80, 11);
 	readonly object = this.seg.object;
 
-	update(emitters: Iterable<ShapeOwner>, camera: CameraState) {
+	update(emitters: Iterable<ShapeOwner>, camera: CameraState, limit = 64) {
 		const seg = this.seg;
+		seg.capacity(limit * 80);
 		seg.begin();
 		let n = 0;
 		for (const e of emitters) {
-			if (n++ >= 64) break;
+			if (n++ >= limit) break;
 			const shape = e.def.emitter.shape;
 			if (!shape) continue;
 			const offset = constVec(shape.offset as never, [0, 0, 0]) ?? [0, 0, 0];
@@ -272,27 +335,24 @@ export class ShapeGizmo {
 
 /** Each sampled particle's velocity as a line covering where it goes in the next 0.25 s */
 export class VelocityOverlay {
-	private seg = new Segments(256 * 3, 15);
+	private seg = new Segments(256, 15);
+	private picker = new StablePick();
 	readonly object = this.seg.object;
 
-	update(world: ParticleWorld, sample = 256) {
+	update(world: ParticleWorld, limit = 256) {
 		const seg = this.seg;
+		seg.capacity(limit);
 		seg.begin();
-		let total = 0;
-		for (const e of world.emitters) total += e.pool.count;
-		const stride = Math.max(1, Math.ceil(total / sample));
 		const p: Vec3 = [0, 0, 0];
 		const v: Vec3 = [0, 0, 0];
-		for (const e of world.emitters) {
+		for (const [e, i] of this.picker.pick(world.emitters, limit)) {
 			const pool = e.pool;
-			for (let i = 0; i < pool.count; i += stride) {
-				e.particleWorldPos(i, p);
-				const vx = pool.vel[i * 3], vy = pool.vel[i * 3 + 1], vz = pool.vel[i * 3 + 2];
-				if (pool.local[i] && e.def.emitter.localSpace.rotation) rotateByQuat(v, vx, vy, vz, e.rotation);
-				else v.splice(0, 3, vx, vy, vz);
-				const end: Vec3 = [p[0] + v[0] * 0.25, p[1] + v[1] * 0.25, p[2] + v[2] * 0.25];
-				seg.add(p, end, VELOCITY);
-			}
+			e.particleWorldPos(i, p);
+			const vx = pool.vel[i * 3], vy = pool.vel[i * 3 + 1], vz = pool.vel[i * 3 + 2];
+			if (pool.local[i] && e.def.emitter.localSpace.rotation) rotateByQuat(v, vx, vy, vz, e.rotation);
+			else v.splice(0, 3, vx, vy, vz);
+			const end: Vec3 = [p[0] + v[0] * 0.25, p[1] + v[1] * 0.25, p[2] + v[2] * 0.25];
+			seg.add(p, end, VELOCITY);
 		}
 		seg.end();
 	}

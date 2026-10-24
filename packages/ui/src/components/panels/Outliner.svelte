@@ -1,6 +1,9 @@
 <script lang="ts">
 	import type { Workspace } from '../../state/workspace.svelte';
 	import { joinPath } from '../../lib/molang-text';
+	import { closeEffect, closeEffects } from '../../lib/actions';
+	import { menu, type MenuItem } from '../../lib/context-menu.svelte';
+	import type { EffectSession } from '../../state/session.svelte';
 
 	interface Props {
 		workspace: Workspace;
@@ -29,6 +32,44 @@
 		workspace.show('curves');
 	}
 
+	function effectMenu(s: EffectSession): MenuItem[] {
+		const others = workspace.sessions.filter((x) => x !== s).map((x) => x.id);
+		return [
+			{ label: 'Show', run: () => void (workspace.activeId = s.id) },
+			{ separator: true },
+			{ label: 'Close', run: () => closeEffect(workspace, s.id) },
+			{ label: 'Close others', disabled: !others.length, run: () => closeEffects(workspace, others) },
+			{ separator: true },
+			{ label: 'Copy identifier', run: () => void navigator.clipboard.writeText(s.identifier) },
+		];
+	}
+
+	function curveMenu(name: string): MenuItem[] {
+		const s = session;
+		if (!s) return [];
+		const path = joinPath('particle_effect', 'curves', name);
+		return [
+			{ label: 'Edit in the Curves panel', run: () => { s.selected = joinPath(path, 'input'); workspace.show('curves'); } },
+			{ label: 'Find uses', run: () => { s.programFilter = name.replace(/^variable\./, 'v.'); s.referencesRequest = { name, at: Date.now() }; workspace.show('expression'); } },
+			{ label: 'Rename everywhere…', run: () => void (s.renameRequest = name) },
+			{ separator: true },
+			{ label: 'Copy JSON', run: () => void navigator.clipboard.writeText(JSON.stringify(s.doc.get(path), null, '\t')) },
+			{ label: 'Remove the curve', danger: true, run: () => s.doc.remove(path, `Remove ${name.replace(/^variable\./, 'v.')}`) },
+		];
+	}
+
+	function eventMenu(name: string): MenuItem[] {
+		const s = session;
+		if (!s) return [];
+		const path = joinPath('particle_effect', 'events', name);
+		return [
+			{ label: 'Edit in the Events panel', run: () => { s.selected = joinPath(path, 'expression'); workspace.show('events'); } },
+			{ separator: true },
+			{ label: 'Copy JSON', run: () => void navigator.clipboard.writeText(JSON.stringify(s.doc.get(path), null, '\t')) },
+			{ label: 'Remove the event', danger: true, title: 'Whatever fires it keeps its name', run: () => s.doc.remove(path, `Remove event ${name}`) },
+		];
+	}
+
 	function addEvent() {
 		if (!session) return;
 		let n = 1;
@@ -43,8 +84,8 @@
 	<h3>Open effects</h3>
 	<ul>
 		{#each workspace.sessions as s (s.id)}
-			<li>
-				<button class="item" class:active={s.id === workspace.activeId} onclick={() => (workspace.activeId = s.id)}>
+			<li use:menu={() => effectMenu(s)}>
+				<button class="item" class:active={s.id === workspace.activeId} onclick={() => (workspace.activeId = s.id)} onauxclick={(e) => e.button === 1 && closeEffect(workspace, s.id)}>
 					<span class="name">{s.identifier}</span>
 					{#if s.dirty}<span class="dot" aria-label="unsaved"></span>{/if}
 				</button>
@@ -60,7 +101,7 @@
 		<ul>
 			{#each curves as c (c)}
 				{@const p = joinPath('particle_effect', 'curves', c, 'input')}
-				<li><button class="item ox-code" class:active={session.selected?.startsWith(joinPath('particle_effect', 'curves', c))} onclick={() => { session.selected = p; workspace.show('curves'); }}>{c.replace(/^variable\./, 'v.')}</button></li>
+				<li use:menu={() => curveMenu(c)}><button class="item ox-code" class:active={session.selected?.startsWith(joinPath('particle_effect', 'curves', c))} onclick={() => { session.selected = p; workspace.show('curves'); }}>{c.replace(/^variable\./, 'v.')}</button></li>
 			{:else}
 				<li class="none">No curves</li>
 			{/each}
@@ -74,7 +115,7 @@
 			{#each events as e (e)}
 				{@const p = joinPath('particle_effect', 'events', e, 'expression')}
 				{@const rank = session.analysis.eventRanks.get(e)}
-				<li>
+				<li use:menu={() => eventMenu(e)}>
 					<button class="item ox-code" class:active={session.selected?.startsWith(joinPath('particle_effect', 'events', e))} onclick={() => { session.selected = p; workspace.show('events'); }}>
 						{e}
 						{#if rank === undefined}<span class="never" title="Nothing fires this event">never fired</span>{/if}

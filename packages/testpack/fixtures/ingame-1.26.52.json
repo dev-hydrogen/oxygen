@@ -1075,10 +1075,147 @@
 			"q": "0.2 (qbox at 30: alt)",
 			"a": "0.25 (altbone found)",
 			"conclusion": "With two geometries and no queryable_geometry, the non-default one (alt) answered whether it was listed first or second."
+		},
+		"s01": {
+			"tl": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"bone": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"entry": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"trans": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"exit": "nobody read it: the on_exit of a state left on its first frame never runs (s15: v.* set there stays unset too; s18: it does run when the state lasted a second)",
+			"conclusion": "A temp an entity writes in any of its client contexts (timeline key, bone channel, controller on_entry, an assignment in a transition condition) reaches every other client context of every entity and every particle effect, attached or not. The server never sees it. An on_exit runs only if the state lasted past its first frame."
+		},
+		"s02": {
+			"pre": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"init": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"anim": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"render": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"gone": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"conclusion": "pre_animation, initialize (q.variant is known there), an assignment inside a scripts.animate condition and inside a render controller's part_visibility all write global client temps. A temp outlives the entity that wrote it."
+		},
+		"s03": {
+			"stl": "all but its own initialize (written after it ran)",
+			"sbone": "all but its own initialize",
+			"spre": "all but its own initialize",
+			"sinit": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"atob": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"btoa": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"conclusion": "An entity reads its own temps back in all its other expressions; there is no per-expression or per-entity scope. Entity types don't matter."
+		},
+		"s04": {
+			"pre": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"att": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"emit": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"part": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"rend": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"event": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"map": "unset everywhere: MolangVariableMap.setFloat('temp.x') throws \"Variable name cannot contain '.' unless it is preceded by 'variable'\"",
+			"conclusion": "Temps written by effects (pre_effect_script, an attached emitter, a /particle emitter, particle update and render, an event expression) reach every entity context too. The Script API can only set variable.* names."
+		},
+		"s05": {
+			"vtl": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"vstop": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"stl": "client: unset everywhere; server: 7",
+			"sent": "client: unset everywhere; server: 7",
+			"conclusion": "A vanilla armor stand's /playanimation timeline and the command's stop_expression write client temps like any entity. Server temps (behaviour-pack animation timeline, controller on_entry) stay on the server: the server reads them, no client context does. Client and server temps are separate, even in single player."
+		},
+		"s06": {
+			"ent": "another entity wrote pre_animation 1, bone 2, render 3 → readers saw: pre_animation 1, initialize 1, timeline/bone/transition/on_entry/animate 2, render not 1, particles 3",
+			"part": "a /particle wrote emitter update 1, particle update 2, particle render 3 → every reader saw 3",
+			"self": "the entity itself wrote pre_animation 1, bone (another channel) 2, render 3 → its animate condition, timeline and bone reads saw 1, its controllers 2, its render controller not 1, particles 3",
+			"conclusion": "A frame runs in phases across all entities: every entity's pre_animation, then animate conditions, timelines and bone channels, then controllers, then render controllers, and particle effects (update and render) after all of them. Within one entity: pre_animation → animate conditions → timeline → bone channels (in order) → controllers → render controllers."
+		},
+		"s07": {
+			"none": "c.foo, c.is_first_person, c.item_slot, c.owning_entity all unset in a /particle effect",
+			"map": "the Script API refuses context.* and c.* names (setFloat throws)",
+			"pre": "pre_effect_script 'c.foo = 7;' is a load error (assignment to a context variable); c.foo stays unset",
+			"write": "'c.cw = 7;' in creation_expression is a load error; another effect reads it unset",
+			"conclusion": "No spawn route sets c.* on a particle effect and Molang can never write it: c.* is always unset in particles."
+		},
+		"s08": {
+			"ent": "'c.ce = 7;' in an entity timeline is a load error (the key is dropped); c.ce reads unset in every context",
+			"fp": "c.is_first_person is unset in every context of a plain entity",
+			"conclusion": "c.* is unset on entities too, and read-only everywhere."
+		},
+		"s09": {
+			"ent": "q.variant, q.health, q.bone_rotation, q.property, q.is_on_ground and q.distance_from_camera written by an entity bone channel all arrived in a /particle effect",
+			"part": "an entity read v.emitter_age, v.particle_age and a camera query's result written by a /particle effect",
+			"srv": "server-side queries written by the behaviour pack did not arrive (unset)",
+			"conclusion": "Temps carry any client-side query or variable into a context that can't query it (entity-only and bone queries into /particle effects, particle values into entities). Server-only values can't cross."
+		},
+		"s10": {
+			"ctl": "v.s10_ctl written by another entity: unset everywhere (entity variables stay with their entity)",
+			"alias": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"case": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"struct": "t.s10_st.a = 7 (reported at load as unsupported, but it runs): every client context read it",
+			"str": "a string temp: every client context read it",
+			"pst": "a struct member written by a /particle: every client context read it",
+			"conclusion": "temp.* and t.* are one namespace, names are case-insensitive, and struct members and strings travel like numbers. v.* doesn't leak between entities. Left of ??, only a bare variable loads without an error: a member, or anything in parentheses or compound, logs \"found left-hand-side of ?? expression that isn't a direct-variable reference\" (t01/t67 found such fields still run)."
+		},
+		"s11": {
+			"run1": "after s01–s10 (no attachable drawn): t.s01_tl, t.s02_init, t.s04_emit read 7; t.s05_stl unset on the client, 7 on the server",
+			"afterS17": "after s17 (attachables drawn): only t.s04_emit (its /particle writer still runs) and the server temp remained",
+			"conclusion": "Client temps last as long as the game process runs unless an attachable is drawn: /reload and reopening the world in the same process kept them (first session: s12/s13 temps read 7 after a reopen). Server temps are untouched by client clears."
+		},
+		"s12": {
+			"exit": "v.exited 1, t.s12_exit unset: on_exit skipped on a first-frame transition",
+			"ientry": "an initial state's on_entry runs: every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"vtl": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"estop": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"vstop": "every client context (timeline, bone channel, transition, on_entry, pre_animation, initialize, animate condition, render controller, attached particle, /particle) read 7; the server read unset",
+			"vread": "confounded (the temps it read had been cleared by an attachable); see s15",
+			"gate": "'(cond) ? { … };' with a false condition doesn't run its block, in pre_animation, initialize and particles",
+			"conclusion": "An initial state's on_entry runs; /playanimation timelines and stop expressions write and read temps on vanilla entities and on ours."
+		},
+		"s13": {
+			"ent": "7 at 2, 5, 10 and 30 s",
+			"gone": "7 at 2, 5, 10 and 30 s",
+			"emit": "7 at 2, 5, 10 and 30 s",
+			"end": "7 at 2, 5, 10 and 30 s",
+			"conclusion": "A temp written once stays, whether its writer stays, despawns, or ends; no time limit (also watched for 12 minutes)."
+		},
+		"s14": {
+			"many": "t.s14_k0 and k999 read 7 in the run (the k1999 square failed to spawn); spawned again by hand, k0, k999 and k1999 all read 7; earlier temps still there",
+			"conclusion": "No sign of a capacity limit: 2000 temps in one frame, and nothing older evicted."
+		},
+		"s15": {
+			"exit": "v.exited 1, v.exitv unset, t.s15_exit unset: on_exit did not run at all",
+			"vread": "the armor stand reading t.s15_set raised its arm; the one reading t.s15_never did not",
+			"conclusion": "An on_exit is skipped when its state is left on the first frame. A vanilla entity reads temps through a /playanimation animation."
+		},
+		"s16": {
+			"count": "with nothing else: a /particle counter and an entity counter grew one per frame, the written-once square stayed 0.3; with a shield on screen: every square dropped to its smallest and stayed there",
+			"conclusion": "Drawing an attachable clears every client temp, every frame it is drawn. Even a temp rewritten every frame only survives part of the frame: entity-written temps never reach particles while an attachable is drawn.",
+			"shieldFollowUp": "s01/s02/s04 re-run with the player holding a shield in first person (controller and initialize readers had latched before the shield and are ignored): an entity bone-channel writer (every frame) was seen only by the reader's render controller; a pre_animation writer by the reader's animate condition, timeline, bone channel and render controller, not its pre_animation or any particle; a /particle emitter writer by animate, timeline, render controller and particles, not bone channels or pre_animation. Entity-written temps never reached particles."
+		},
+		"s17": {
+			"att_w": "unset everywhere: the attachable's own temp write is cleared too",
+			"att_c": "the copies of its context values into temps were cleared as well (unset)",
+			"clear": "a frame counter reset when a shield went into a stand’s hand at 2 s",
+			"conclusion": "Attachables (ours, shield, trident, bow, crossbow, spyglass; not a sword or stick, which have none) clear all client temps whenever they are drawn: held by an armor stand or by the player in first person, only while on screen. Temps written by attachables are cleared with the rest, so they can never hand values out."
+		},
+		"s18": {
+			"d3": "pre_animation 'v.x = 3' read by its animation: works (variables persist within the attachable)",
+			"d4": "in an attachable's bone channel c.item_slot == 'main_hand' is true, c.owning_entity -> q.is_alive is false",
+			"d5": "in its render controller c.item_slot == 'main_hand' and c.is_first_person == 0 are true; c.owning_entity is 'unknown variable context.owning_entity'",
+			"exit": "with the state lasting a second, on_exit runs (v.exitv 1)",
+			"conclusion": "c.item_slot and c.is_first_person are real context values in attachables (animations and render controllers). c.owning_entity isn't available in a render controller and its arrow query read false in an animation."
+		},
+		"e32": {
+			"version": "1.26.60",
+			"g1": "red: from the world origin",
+			"g2": "red (locator up): from the world origin",
+			"g3": "red: from the world origin (the wobble kept)",
+			"g4": "green: bind_to_actor false measures from the emitter",
+			"g5": "red dots, staying where the rig started: from the world origin, not the rig",
+			"g6": "red, staying put while the rig moves",
+			"g7": "green: /particle measures from the emitter",
+			"conclusion": "A world-space emitter bound to an entity (with or without a locator) takes particle_motion_parametric relative_position from the world origin, for its whole life (e10): not from the entity, not from where the emitter spawned. bind_to_actor: false and /particle take it from the emitter."
 		}
 	},
 	"entityDate": "2026-10-19",
 	"entityMethod": "BedrockMCP screenshots of the oxygen:rig entity tests (e01-e12): close-up top and front views of axis triads (X red, Y green, Z blue, thin at the emitter, thick at the +1 end) drawn in each emitter frame",
 	"entityDate2": "2026-10-21",
-	"entityMethod2": "BedrockMCP screenshots (fixed views per run) and the content log; commands through the Oxygen /connect bridge. Entities more than 64 blocks from the camera cull their effects: views stayed within that."
+	"entityMethod2": "BedrockMCP screenshots (fixed views per run) and the content log; commands through the Oxygen /connect bridge. Entities more than 64 blocks from the camera cull their effects: views stayed within that.",
+	"scopeDate": "2026-10-22",
+	"scopeMethod": "BedrockMCP screenshots of the oxygen:scope tests (s01-s18) in a freshly started game, close-ups of every station read by tools: indicator cube sizes per context, particle square sizes, the wool the server placed. s17/s18 (attachables) ran last: drawing an attachable clears temps."
 }

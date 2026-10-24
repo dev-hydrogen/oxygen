@@ -75,7 +75,39 @@ describe('.mcstructure', () => {
 	});
 });
 
+describe('moving the stand-in in the viewport', () => {
+	it('an origin moves where it stands, and the route of its motion with it', () => {
+		const still = new EntityDummy({ ...DEFAULT_ENTITY, origin: [3, 1, -2] });
+		expect(still.position).toEqual([3, 1, -2]);
+		const bob = new EntityDummy({ ...DEFAULT_ENTITY, origin: [3, 0, 0], motion: { kind: 'path', points: [[0, 0, 0], [4, 0, 0]], speed: 1, ends: 'loop' } });
+		bob.update(1);
+		expect(bob.position[0]).toBeCloseTo(4);
+	});
+
+	it('a move in the world becomes the locator offset that puts it there, at any facing and scale', () => {
+		for (const yaw of [0, 90, 215]) {
+			for (const scale of [1, 2.5]) {
+				const loc: Locator = { name: 'l', offset: [2, 20, -3] };
+				const e = new EntityDummy({ ...DEFAULT_ENTITY, yaw, scale, locators: [loc], locator: 'l' });
+				const before = e.frame().position;
+				const move: [number, number, number] = [0.5, -0.25, 1];
+				const d = e.modelDelta(move);
+				e.settings = { ...e.settings, locators: [{ ...loc, offset: [loc.offset[0] + d[0], loc.offset[1] + d[1], loc.offset[2] + d[2]] }] };
+				const after = e.frame().position;
+				for (let k = 0; k < 3; k++) expect(after[k] - before[k]).toBeCloseTo(move[k], 6);
+			}
+		}
+	});
+});
+
 describe('entity stand-in', () => {
+	it('stands where its settings say as soon as they change, so an unbound effect starts there', () => {
+		const e = new EntityDummy({ ...DEFAULT_ENTITY });
+		e.settings = { ...DEFAULT_ENTITY, origin: [6, 0, 0] };
+		expect(e.position).toEqual([6, 0, 0]);
+		expect(e.unboundStart().position).toEqual([6, 0, 0]);
+		expect(e.attachment().getTransform().position).toEqual([6, 0, 0]);
+	});
 	it('moves along a circle facing its direction of travel, with locators following', () => {
 		const e = new EntityDummy({ motion: { kind: 'circle', radius: 2, speed: 2 }, locator: 'chest', locators: [{ name: 'chest', offset: [0, 24, 0] }] });
 		e.update(0.25);

@@ -1,6 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { GameInstall } from './deploy';
+import { packFolder, type GameInstall } from './deploy';
 
 /**
  * Oxygen Link: a tiny behavior pack that spawns effects the way a script does, with a MolangVariableMap.
@@ -69,8 +69,11 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
 }
 
 /** Put Oxygen Link into the game's development behavior packs (replacing an older copy) */
-export function deployHelper(install: GameInstall): string {
-	const target = join(install.comMojang, 'development_behavior_packs', HELPER_FOLDER);
+export function deployHelper(install: GameInstall): string | null {
+	const folder = packFolder(install, 'behavior');
+	// a folder chosen by hand may have nowhere for behavior packs
+	if (!folder) return null;
+	const target = join(folder, HELPER_FOLDER);
 	if (existsSync(target)) rmSync(target, { recursive: true, force: true });
 	for (const [path, text] of Object.entries(helperPackFiles())) {
 		const file = join(target, path);

@@ -27,11 +27,13 @@
 	$effect(() => {
 		const path = texturePath;
 		const over = override;
+		// an opened pack or an imported image can change what the path shows
+		void workspace?.packVersion;
 		image = null;
 		missing = false;
 		if (!path || !workspace) return;
 		let live = true;
-		void (over ? Promise.resolve(over) : workspace.host.resolveTexture(path, session.file)).then((url) => {
+		void (over ? Promise.resolve(over) : workspace.resolveTexture(path, session.file)).then((url) => {
 			if (!live) return;
 			if (!url) {
 				missing = true;

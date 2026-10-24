@@ -15,6 +15,9 @@
 	import TimelineField from '../fields/TimelineField.svelte';
 	import MiniGraph from '../fields/MiniGraph.svelte';
 	import { getContext } from 'svelte';
+	import { afterRelease } from '../../lib/pointer';
+	import { menu, type MenuItem } from '../../lib/context-menu.svelte';
+	import { molangText } from '../../lib/molang-text';
 	import type { Workspace } from '../../state/workspace.svelte';
 
 	interface Props {
@@ -55,11 +58,43 @@
 		if (!ref || ref.field.broken || ref.field.constant !== null || !ref.expectsValue) return null;
 		return sel;
 	});
+	/** the graph shown: it changes once the click that selected the field is over, so nothing moves under it */
+	let shownGraph = $state<string | null>(null);
+	$effect(() => {
+		const p = graphPath;
+		return afterRelease(() => (shownGraph = p));
+	});
 
 	function select(p = path) {
 		// a click on the row bubbles up after an axis editor took focus: keep that more specific selection
 		if (p === path && session.selected?.startsWith(`${path}/`)) return;
 		session.selected = p;
+	}
+
+	function fieldMenu(): MenuItem[] {
+		const text = value === undefined ? '' : typeof value === 'string' ? value : JSON.stringify(value);
+		return [
+			{ label: 'Show its graph', disabled: !graphPath && !(session.analysis?.byPath.get(path)?.field.constant === null), run: () => { select(); workspace?.show('graph'); } },
+			{ separator: true },
+			{ label: 'Copy the value', disabled: value === undefined, title: text, run: () => void navigator.clipboard.writeText(field.kind.type === 'molang' || field.kind.type === 'statements' ? molangText(value) : text) },
+			{
+				label: 'Paste the value',
+				run: async () => {
+					const t = (await navigator.clipboard.readText().catch(() => '')).trim();
+					if (!t) return;
+					let v: unknown = t;
+					try {
+						v = JSON.parse(t);
+					} catch {
+						// Molang text
+					}
+					if (field.kind.type === 'molang' || field.kind.type === 'statements') session.doc.setMolang(path, typeof v === 'string' || typeof v === 'number' ? String(v) : t, `Paste ${field.label}`);
+					else set(v, field.label);
+				},
+			},
+			{ separator: true },
+			{ label: 'Reset to the default', disabled: value === undefined, run: () => set(undefined) },
+		];
 	}
 
 	function set(v: unknown, what = field.label) {
@@ -86,6 +121,7 @@
 	});
 </script>
 
+<div class="menuwrap" use:menu={fieldMenu}>
 <FieldRow label={field.label} phase={field.phase} help={field.help} {order} {problems} {selected} {stacked} onselect={() => select()}>
 	{#if field.kind.type === 'molang'}
 		<MolangInput {session} {path} {label} placeholder={field.kind.default === null || field.kind.default === undefined ? 'not set' : String(field.kind.default)} context={molangContextFor(session, path, field)} onfocus={() => select()} />
@@ -175,10 +211,14 @@
 	{:else if field.kind.type === 'collision-events'}
 		<TimelineField {session} {path} {label} mode="collision" />
 	{/if}
-	{#if graphPath}<MiniGraph {session} path={graphPath} onexpand={() => workspace?.show('graph')} />{/if}
+	{#if shownGraph}<MiniGraph {session} path={shownGraph} onexpand={() => workspace?.show('graph')} />{/if}
 </FieldRow>
+</div>
 
 <style>
+	.menuwrap {
+		display: contents;
+	}
 	.inline {
 		display: flex;
 		align-items: center;

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { ParticleRenderer, type TextureProvider } from 'wintersky/render';
-import type { EffectSession } from '../state/session.svelte';
+import type { Vec3 } from 'wintersky';
+import { turnQuat, type EffectSession } from '../state/session.svelte';
+import { cameraAt, type CameraMove } from '../lib/camera-moves';
 import { GroundGrid } from './grid';
 import { sampleTrajectories } from '../lib/sampler';
 import { SceneObjects } from './sceneObjects';
@@ -8,7 +10,8 @@ import { VibrantPipeline, type ExposureMode } from './vibrant';
 import { AUTO_EXPOSURE } from '@oxygen/scene';
 import { EmitterMarkers, FacingOverlay, ShapeGizmo, VelocityOverlay } from './overlays';
 import { CameraRig } from './camera';
-import { DEFAULT_GIZMOS, type GizmoHit, type Gizmos } from './gizmos';
+import { canTurn, DEFAULT_GIZMO_LIMITS, DEFAULT_GIZMOS, type GizmoHit, type GizmoLimits, type Gizmos, type MoveTarget } from './gizmos';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { heldKey, isMac } from '../lib/keys';
 
 /** the classic viewport's background, unless Settings › Viewport says otherwise */
@@ -30,6 +33,24 @@ export interface ViewportControls {
 	/** #rrggbb */
 	background: string;
 	flyKeys: Record<FlyAction, string[]>;
+}
+
+/** How a screenshot or GIF is drawn (Settings › Viewport › Captures) */
+export interface CaptureOptions {
+	/** times the viewport's size in CSS pixels; the longest side never passes `maxSide` */
+	scale: number;
+	maxSide?: number;
+	/** no background: see-through where nothing is drawn, and partly where particles are translucent */
+	transparent: boolean;
+	/** the grid, emitter markers, the entity and the other helpers (off: only the particles and blocks) */
+	helpers: boolean;
+}
+
+/** Straight (not premultiplied) RGBA */
+export interface CaptureImage {
+	width: number;
+	height: number;
+	data: Uint8ClampedArray;
 }
 
 export interface ViewportOptions {
@@ -59,6 +80,26 @@ export class ViewportScene {
 	private velocities = new VelocityOverlay();
 	readonly objects = new SceneObjects();
 	private vibrant: VibrantPipeline;
+	/** the move handles, on whatever `moveTarget` is */
+	private transform: TransformControls;
+	private handle = new THREE.Object3D();
+	/** outline of the block being moved */
+	private blockMark: THREE.LineSegments;
+	/** what the handles move; null hides them */
+	moveTarget: MoveTarget | null = null;
+	/** the handles move the target, or turn it (rings) */
+	turning = false;
+	/**
+	 * The rings were dragged: `rotation` is the target's whole turn now (a quaternion [x, y, z, w]), `done` on
+	 * release. Whoever set the target applies it.
+	 */
+	onTurn: ((target: MoveTarget, rotation: [number, number, number, number], done: boolean) => void) | null = null;
+	/**
+	 * The handles were dragged: `delta` is how far from where the drag started (world blocks), `done` on release.
+	 * Whoever set the target applies it.
+	 */
+	onMove: ((target: MoveTarget, delta: [number, number, number], done: boolean) => void) | null = null;
+	private dragFrom: THREE.Vector3 | null = null;
 	/** classic, Vibrant Visuals approximation, or both side by side (classic left) */
 	renderMode: 'classic' | 'vv' | 'split' = 'classic';
 	/** Vibrant Visuals draws the game's sky behind particles; off keeps the classic backdrop, to compare just the particles */
@@ -90,6 +131,8 @@ export class ViewportScene {
 	showMarker = true;
 	/** which helpers are drawn (each can be hidden on its own) */
 	gizmos: Gizmos = { ...DEFAULT_GIZMOS };
+	/** at most this many of each helper (Settings › Viewport) */
+	gizmoLimits: GizmoLimits = { ...DEFAULT_GIZMO_LIMITS };
 	fps = 0;
 	/** the keys bound to flying (W A S D, Q E, Shift faster unless rebound) */
 	private flyKeys: Record<FlyAction, string[]> = DEFAULT_FLY_KEYS;
@@ -167,6 +210,37 @@ export class ViewportScene {
 		this.scene.add(this.paths);
 		this.scene.add(this.facing.object, this.emitterMarkers.object, this.shapes.object, this.velocities.object);
 		this.scene.add(this.objects.group);
+		this.transform = new TransformControls(this.camera, canvas);
+		this.transform.setSpace('world');
+		this.transform.size = 0.75;
+		this.scene.add(this.handle, this.transform.getHelper());
+		const turnNow = () => this.handle.quaternion.toArray() as [number, number, number, number];
+		this.transform.addEventListener('dragging-changed', (e) => {
+			const target = this.moveTarget;
+			if (e.value) this.dragFrom = this.handle.position.clone();
+			else if (target && this.dragFrom) {
+				if (this.transform.mode === 'rotate') this.onTurn?.(target, turnNow(), true);
+				else this.onMove?.(target, this.handle.position.clone().sub(this.dragFrom).toArray(), true);
+				this.dragFrom = null;
+			}
+		});
+		this.transform.addEventListener('objectChange', () => {
+			const target = this.moveTarget;
+			if (!target || !this.dragFrom) return;
+			if (this.transform.mode === 'rotate') this.onTurn?.(target, turnNow(), false);
+			else this.onMove?.(target, this.handle.position.clone().sub(this.dragFrom).toArray(), false);
+		});
+		// a press on a handle drags it rather than turning the camera
+		this.controls.grabbed = (e) => {
+			if (!this.transform.object) return false;
+			const r = canvas.getBoundingClientRect();
+			this.transform.pointerHover({ x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1, button: e.button } as unknown as PointerEvent);
+			return this.transform.axis !== null;
+		};
+		this.blockMark = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.02, 1.02, 1.02)), new THREE.LineBasicMaterial({ color: 0xf2c14e, depthTest: false, transparent: true }));
+		this.blockMark.renderOrder = 18;
+		this.blockMark.visible = false;
+		this.scene.add(this.blockMark);
 		this.vibrant = new VibrantPipeline(this.renderer, this.scene, this.camera);
 		// lights for the block preview only (particles use the game's own lighting model)
 		this.scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a3428, 1.6));
@@ -235,7 +309,8 @@ export class ViewportScene {
 			this.raf = requestAnimationFrame(loop);
 			const dt = this.last ? (t - this.last) / 1000 : 0;
 			this.last = t;
-			this.frame(dt);
+			// a GIF being recorded drives the frames itself, at its own rate
+			if (!this.recording) this.frame(dt);
 		};
 		this.raf = requestAnimationFrame(loop);
 	}
@@ -254,10 +329,7 @@ export class ViewportScene {
 		this.flyKeys = c.flyKeys;
 		this.held.clear();
 		const bg = /^#[0-9a-f]{6}$/i.test(c.background) ? parseInt(c.background.slice(1), 16) : BACKDROP;
-		if (bg !== this.backdrop) {
-			this.backdrop = bg;
-			this.renderer.setClearColor(bg, 1);
-		}
+		this.backdrop = bg;
 		if (c.resolution !== this.resolution) {
 			this.resolution = c.resolution;
 			this.renderer.setPixelRatio(this.pixelRatio());
@@ -385,20 +457,22 @@ export class ViewportScene {
 	private draw(s: EffectSession | null) {
 		const mode = s ? this.renderMode : 'classic';
 		const r = this.renderer;
-		const w = this.canvas.clientWidth;
-		const h = this.canvas.clientHeight;
+		// the canvas's size, or a capture's
+		const { x: w, y: h } = r.getSize(new THREE.Vector2());
 		// this thread's emitters and any running in workers
 		const all = () => (s ? [...s.world.emitters, ...s.parallel.remote.values()] : []);
 		const classic = () => {
 			this.particles.vibrant = null;
 			this.scene.background = null;
+			r.setClearColor(this.captureBackdrop?.classic ?? this.backdrop, 1);
 			if (s) this.particles.syncEmitters(all(), this.camera);
 		};
 		const vibrant = () => {
 			this.particles.vibrant = VibrantPipeline.settings(s!.vvLighting, s!.timeOfDay, s!.vvFromPack.lighting);
 			// the measured sky, so blended and additive particles sit on what the game shows behind them; or the
 			// classic backdrop, run backwards through the tone mapper so it comes out the same
-			this.scene.background = this.vvSky ? VibrantPipeline.sky(s!.timeOfDay, s!.vvGrading) : VibrantPipeline.backdrop(s!.vvGrading, this.backdrop);
+			const cb = this.captureBackdrop;
+			this.scene.background = cb ? cb.vibrant : this.vvSky ? VibrantPipeline.sky(s!.timeOfDay, s!.vvGrading) : VibrantPipeline.backdrop(s!.vvGrading, this.backdrop);
 			this.particles.syncEmitters(all(), this.camera);
 		};
 		// auto exposure meters against the game's scene at this time of day
@@ -430,6 +504,147 @@ export class ViewportScene {
 			r.setViewport(0, 0, w, h);
 			this.camera.aspect = w / h;
 			this.camera.updateProjectionMatrix();
+		}
+	}
+
+	/** a capture's matte: what's drawn behind the particles in each pass */
+	private captureBackdrop: { classic: number; vibrant: THREE.Color } | null = null;
+	/** a GIF is being recorded: the animation loop leaves the frames to it */
+	private recording = false;
+
+	/**
+	 * Draw the current moment once more at capture size and read it back. A transparent capture draws it twice,
+	 * over black and over a lighter backdrop, and works out each pixel's coverage from the difference (exact for
+	 * classic rendering; close for Vibrant Visuals, whose tone mapping isn't linear).
+	 */
+	capture(o: CaptureOptions): CaptureImage {
+		const r = this.renderer;
+		const s = this.session;
+		const cw = Math.max(1, this.canvas.clientWidth);
+		const ch = Math.max(1, this.canvas.clientHeight);
+		const limit = Math.min(o.maxSide ?? 8192, r.capabilities.maxTextureSize, 8192);
+		const k = Math.min(o.scale, limit / Math.max(cw, ch));
+		const width = Math.max(1, Math.round(cw * k));
+		const height = Math.max(1, Math.round(ch * k));
+		const ratio = r.getPixelRatio();
+		const hidden: THREE.Object3D[] = [];
+		if (!o.helpers)
+			for (const c of this.scene.children) {
+				// the particles and the preview world's blocks stay; lights only light the blocks
+				if (c === this.particles.group || c instanceof THREE.Light || !c.visible) continue;
+				hidden.push(c);
+				c.visible = false;
+			}
+		const blocksOnly = !o.helpers;
+		const entityWas = this.objects.showEntity;
+		if (blocksOnly) {
+			this.objects.group.visible = true;
+			this.objects.showEntity = false;
+			if (s) this.objects.sync(s);
+		}
+		r.setPixelRatio(1);
+		r.setSize(width, height, false);
+		const gl = r.getContext();
+		// the browser may give a smaller drawing buffer than asked for
+		const bw = gl.drawingBufferWidth;
+		const bh = gl.drawingBufferHeight;
+		const grab = document.createElement('canvas');
+		grab.width = bw;
+		grab.height = bh;
+		const g = grab.getContext('2d', { willReadFrequently: true })!;
+		const read = () => {
+			g.clearRect(0, 0, bw, bh);
+			g.drawImage(this.canvas, 0, 0, bw, bh);
+			return g.getImageData(0, 0, bw, bh).data;
+		};
+		const vv = s && this.renderMode !== 'classic';
+		const exposure = this.vibrant.exposureMode;
+		let data: Uint8ClampedArray;
+		try {
+			if (!o.transparent) {
+				this.draw(s);
+				data = read();
+			} else {
+				// classic: black and white; Vibrant Visuals: black and a mid grey, which its tone mapping keeps clear of bloom
+				const light = vv ? 0.5 : 1;
+				const solve = (v: number) => (s ? VibrantPipeline.backdrop(s.vvGrading, new THREE.Color(v, v, v).getHex()) : new THREE.Color(v, v, v));
+				this.captureBackdrop = { classic: 0x000000, vibrant: solve(0) };
+				this.draw(s);
+				const dark = read();
+				this.vibrant.exposureMode = 'hold';
+				this.captureBackdrop = { classic: 0xffffff, vibrant: solve(light) };
+				this.vvElapsed = 0;
+				this.draw(s);
+				const lit = read();
+				data = new Uint8ClampedArray(dark.length);
+				const span = 255 * light;
+				for (let i = 0; i < dark.length; i += 4) {
+					const d = (lit[i] - dark[i] + lit[i + 1] - dark[i + 1] + lit[i + 2] - dark[i + 2]) / 3;
+					const a = Math.min(1, Math.max(0, 1 - d / span));
+					data[i + 3] = Math.round(a * 255);
+					if (a <= 0) continue;
+					data[i] = dark[i] / a;
+					data[i + 1] = dark[i + 1] / a;
+					data[i + 2] = dark[i + 2] / a;
+				}
+			}
+		} finally {
+			this.captureBackdrop = null;
+			this.vibrant.exposureMode = exposure;
+			for (const c of hidden) c.visible = true;
+			if (blocksOnly) this.objects.showEntity = entityWas;
+			r.setPixelRatio(ratio);
+			this.resize(cw, ch);
+			this.vvElapsed = 0;
+			this.draw(s);
+		}
+		return { width: bw, height: bh, data };
+	}
+
+	/**
+	 * Play on (from the start with `fromStart`) at a steady `fps` for `seconds`, capturing every frame. The
+	 * effect is shown as it's recorded. Stops early when the effect ends or `cancelled` says so.
+	 */
+	async record(
+		o: CaptureOptions & { seconds: number; fps: number; fromStart: boolean; camera?: { move: CameraMove; seconds: number } },
+		onFrame: (image: CaptureImage, time: number, done: number) => void | Promise<void>,
+		cancelled: () => boolean = () => false,
+	): Promise<number> {
+		const s = this.session;
+		if (!s) return 0;
+		this.recording = true;
+		// a camera move goes from the view the recording starts at, and the view comes back after
+		const start = this.view();
+		const move = o.camera && o.camera.move !== 'still' ? o.camera : null;
+		try {
+			if (o.fromStart) s.restart();
+			s.playing = true;
+			const total = Math.max(1, Math.round(o.seconds * o.fps));
+			const dt = 1 / o.fps;
+			let n = 0;
+			for (; n < total && !cancelled(); n++) {
+				// the camera goes first, so the effect sees it where it's drawn from (facing, distance queries)
+				if (move) {
+					const v = cameraAt(move.move, start, (n * dt) / move.seconds);
+					this.setView({ ...v, fov: start.fov });
+				}
+				// the first frame shows the moment it starts from
+				if (n) this.frame(dt, false);
+				if (s.finished) break;
+				this.updateHelpers(s);
+				await onFrame(this.capture(o), n * dt, (n + 1) / total);
+				// let the page breathe (and show progress) between frames; a message isn't slowed down in a background tab, a timer is
+				await new Promise<void>((r) => {
+					const c = new MessageChannel();
+					c.port1.onmessage = () => r();
+					c.port2.postMessage(0);
+				});
+			}
+			return n;
+		} finally {
+			if (move) this.setView(start);
+			this.recording = false;
+			this.last = 0;
 		}
 	}
 
@@ -466,13 +681,13 @@ export class ViewportScene {
 		this.marker.visible = this.showMarker && this.gizmos.emitter;
 		this.marker.position.set(pos[0], pos[1], pos[2]);
 		if (root) this.marker.quaternion.set(root.rotation[0], root.rotation[1], root.rotation[2], root.rotation[3]);
-		if (this.showMarker && this.gizmos.children) this.emitterMarkers.update([...s.world.emitters, ...s.parallel.remote.values()], s.world.camera, root?.id ?? null);
+		if (this.showMarker && this.gizmos.children) this.emitterMarkers.update([...s.world.emitters, ...s.parallel.remote.values()], s.world.camera, root?.id ?? null, this.gizmoLimits.emitters);
 		else this.emitterMarkers.object.visible = false;
-		if (s.showFacing) this.facing.update(s.world, s.world.camera, s.selection);
+		if (s.showFacing) this.facing.update(s.world, s.world.camera, s.selection, this.gizmoLimits.facing);
 		else this.facing.hide();
-		if (s.showShape) this.shapes.update([...s.world.emitters, ...s.parallel.remote.values()], s.world.camera);
+		if (s.showShape) this.shapes.update([...s.world.emitters, ...s.parallel.remote.values()], s.world.camera, this.gizmoLimits.shapes);
 		else this.shapes.hide();
-		if (s.showVelocity) this.velocities.update(s.world);
+		if (s.showVelocity) this.velocities.update(s.world, this.gizmoLimits.velocity);
 		else this.velocities.hide();
 		const scale = this.camera.position.distanceTo(this.marker.position) * 0.18;
 		this.marker.scale.setScalar(Math.max(0.05, scale));
@@ -480,6 +695,7 @@ export class ViewportScene {
 
 		this.updatePaths(s);
 		this.objects.sync(s);
+		this.updateHandles(s);
 		// classic particle lighting: the renderer counts time from sunrise, queries from midnight
 		this.particles.lighting = { skyLight: s.scene.skyLight, blockLight: s.scene.blockLight, timeOfDay: (s.timeOfDay - 0.25 + 1) % 1 };
 
@@ -517,6 +733,78 @@ export class ViewportScene {
 			const size = Math.max(4, this.camera.position.distanceTo(this.controls.target) * 1.5);
 			this.killPlane.scale.set(size, size, 1);
 		} else this.killPlane.visible = false;
+	}
+
+	/** Where a move target is in the world, or null when it's gone (the entity hidden, a block removed) */
+	targetPosition(s: EffectSession, t: MoveTarget): THREE.Vector3 | null {
+		const onEntity = s.spawnMode === 'entity' && this.gizmos.entity;
+		if (t.kind === 'block') return s.blocks.get(t.cell[0], t.cell[1], t.cell[2]) ? new THREE.Vector3(t.cell[0] + 0.5, t.cell[1] + 0.5, t.cell[2] + 0.5) : null;
+		if (t.kind === 'emitter') return s.spawnMode === 'entity' ? null : new THREE.Vector3(...(s.scene.emitter?.position ?? [0, 0, 0]));
+		if (t.kind === 'extra') {
+			const x = s.scene.extras?.[t.index];
+			return x ? new THREE.Vector3(...x.position) : null;
+		}
+		if (!onEntity) return null;
+		if (t.kind === 'entity') return new THREE.Vector3(...s.entity.position);
+		if (t.kind === 'locator') return s.entity.locators.some((l) => l.name === t.name) ? new THREE.Vector3(...s.entity.frame(t.name).position) : null;
+		const m = s.scene.entity.motion;
+		const o = s.scene.entity.origin ?? [0, 0, 0];
+		const p = m.kind === 'path' ? m.points[t.index] : undefined;
+		return p ? new THREE.Vector3(p[0] + o[0], p[1] + o[1], p[2] + o[2]) : null;
+	}
+
+	/** A turn as degrees about X, then Y, then Z (rounded to a tenth), the way the scene keeps an emitter's */
+	static turnDegrees(q: [number, number, number, number]): Vec3 {
+		const e = new THREE.Euler().setFromQuaternion(new THREE.Quaternion().fromArray(q), 'XYZ');
+		return [e.x, e.y, e.z].map((v) => Math.round(THREE.MathUtils.radToDeg(v) * 10) / 10 || 0) as Vec3;
+	}
+
+	/** A turn as Minecraft's yaw (0 faces south, +Z; 90 west, -X), from where it points +Z */
+	static yawOf(q: [number, number, number, number]): number {
+		const f = new THREE.Vector3(0, 0, 1).applyQuaternion(new THREE.Quaternion().fromArray(q));
+		const yaw = Math.round(THREE.MathUtils.radToDeg(Math.atan2(-f.x, f.z)) * 10) / 10;
+		return yaw <= -180 ? yaw + 360 : yaw || 0;
+	}
+
+	/** How a target is turned now, as a quaternion (identity for what doesn't turn) */
+	targetTurn(s: EffectSession, t: MoveTarget): [number, number, number, number] {
+		if (t.kind === 'entity') return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(-(s.scene.entity.yaw ?? 0))).toArray() as [number, number, number, number];
+		const r = t.kind === 'emitter' ? s.scene.emitter?.rotation : t.kind === 'extra' ? s.scene.extras?.[t.index]?.rotation : undefined;
+		return (turnQuat(r) ?? [0, 0, 0, 1]) as [number, number, number, number];
+	}
+
+	/** Handles on the move target (following it while it moves), or hidden */
+	private updateHandles(s: EffectSession) {
+		const t = this.moveTarget;
+		const at = t ? this.targetPosition(s, t) : null;
+		if (!t || !at) {
+			if (this.transform.object) this.transform.detach();
+			this.blockMark.visible = false;
+			return;
+		}
+		const turn = this.turning && canTurn(t);
+		if (!this.transform.dragging) {
+			this.handle.position.copy(at);
+			this.handle.quaternion.fromArray(this.targetTurn(s, t));
+		}
+		if (this.transform.object !== this.handle) this.transform.attach(this.handle);
+		const mode = turn ? 'rotate' : 'translate';
+		if (this.transform.mode !== mode && !this.transform.dragging) this.transform.setMode(mode);
+		// the entity turns about the vertical only; turning works in the target's own frame
+		const yawOnly = turn && t.kind === 'entity';
+		this.transform.showX = !yawOnly;
+		this.transform.showZ = !yawOnly;
+		this.transform.setSpace(turn && !yawOnly ? 'local' : 'world');
+		// blocks go cell by cell; the rest by a pixel (1/16 block); turns by a degree
+		this.transform.setTranslationSnap(t.kind === 'block' ? 1 : null);
+		this.transform.setRotationSnap(THREE.MathUtils.degToRad(1));
+		this.blockMark.visible = t.kind === 'block';
+		if (t.kind === 'block') this.blockMark.position.copy(this.handle.position).floor().addScalar(0.5);
+	}
+
+	/** a press on a move handle is the handles' own (the click isn't a pick) */
+	get handleHovered(): boolean {
+		return !!this.transform.object && (this.transform.axis !== null || this.transform.dragging);
 	}
 
 	/** Trajectory ghosts: recomputed (debounced) when the effect changes or the toggle flips */
@@ -606,6 +894,26 @@ export class ViewportScene {
 				if (d < 10 && (!best || d < best.d)) best = { id: e.id, d };
 			}
 			if (best) return { kind: 'emitter', id: best.id };
+			// locator dots and path points: small, so they win over the particles around them too
+			if (this.gizmos.entity && s.spawnMode === 'entity') {
+				const near = (p: [number, number, number]) => {
+					v.set(...p).project(this.camera);
+					return v.z < -1 || v.z > 1 ? Infinity : Math.hypot(((v.x + 1) / 2) * w - x, ((1 - v.y) / 2) * h - y);
+				};
+				let point: { hit: GizmoHit; d: number } | null = null;
+				for (const l of s.entity.locators) {
+					const d = near(s.entity.frame(l.name).position);
+					if (d < 8 && (!point || d < point.d)) point = { hit: { kind: 'locator', name: l.name }, d };
+				}
+				const m = s.scene.entity.motion;
+				const o = s.scene.entity.origin ?? [0, 0, 0];
+				if (m.kind === 'path')
+					m.points.forEach((p, index) => {
+						const d = near([p[0] + o[0], p[1] + o[1], p[2] + o[2]]);
+						if (d < 8 && (!point || d < point.d)) point = { hit: { kind: 'waypoint', index }, d };
+					});
+				if (point) return (point as { hit: GizmoHit }).hit;
+			}
 		}
 		if (only === 'emitter') return null;
 		const rc = new THREE.Raycaster();
@@ -614,7 +922,11 @@ export class ViewportScene {
 		rc.params.Line = { threshold: this.controls.distance * 0.012 };
 		if (this.killPlane.visible && rc.intersectObject(this.killPlane, true).length) return { kind: 'killPlane' };
 		if (s.showShape && this.shapes.object.visible && rc.intersectObject(this.shapes.object, true).length) return { kind: 'shape' };
-		if (this.gizmos.entity && s.spawnMode === 'entity' && rc.intersectObject(this.objects.entityObject, true).length) return { kind: 'entity' };
+		if (this.gizmos.entity && s.spawnMode === 'entity') {
+			if (rc.intersectObject(this.objects.entityObject, true).length) return { kind: 'entity' };
+		}
+		const cell = this.objects.paintTarget(rc, true);
+		if (cell) return { kind: 'block', cell };
 		return null;
 	}
 
@@ -686,6 +998,7 @@ export class ViewportScene {
 		this.canvas.removeEventListener('keyup', this.onKeyUp);
 		this.canvas.removeEventListener('blur', this.onBlur);
 		this.controls.dispose();
+		this.transform.dispose();
 		this.particles.dispose();
 		this.vibrant.dispose();
 		this.renderer.dispose();

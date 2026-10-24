@@ -1,7 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron';
-import { existsSync, readdirSync, readFileSync, statSync, watch, writeFileSync, type FSWatcher } from 'node:fs';
+import { app, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, watch, writeFileSync, type FSWatcher } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { basename, dirname, join, resolve } from 'node:path';
-import { ConnectServer, deployHelper, deployPackDetailed, entryPath, findInstalls, latestContentLog, parseContentLog, particleSpawnCommand, readPack, scriptSpawnCommand } from '@oxygen/gamelink';
+import { ConnectServer, deployHelper, deployPackDetailed, entryPath, findInstalls, folderInstall, installPaths, latestContentLog, parseContentLog, particleSpawnCommand, readLogSince, readPack, pathsInstall, scriptSpawnCommand, type DeployPaths, type GameInstall } from '@oxygen/gamelink';
 import { parentInputsFor, spawnsOf, type EffectSpawns } from '@oxygen/effect';
 import type { DesktopFile, DesktopGameStatus, DesktopLogEntry } from './api';
 import { checkForUpdates, downloadUpdate, installUpdate, setAutomatic, startUpdates, updateState } from './updater';
@@ -171,14 +172,38 @@ function findEffect(root: string | null, identifier: string): string | null {
 // ---- game link
 const connect = new ConnectServer(19131);
 const installs = findInstalls();
-const gameStatus = (): DesktopGameStatus => ({ connected: connect.connected, port: connect.port, installs: installs.map((i) => i.name), error: connect.error });
+
+/**
+ * Where Deploy copies packs (Game menu › Deploy to), kept in settings.json: a found install by name, or paths set
+ * by hand (the way on Linux and macOS launchers, which Oxygen doesn't find by itself)
+ */
+type DeployTarget = { install: string } | { paths: DeployPaths };
+let deployTo: { install: GameInstall | null; custom: boolean } | null = null;
+function deployTarget(): { install: GameInstall | null; custom: boolean } {
+	if (deployTo) return deployTo;
+	const t = settings.deployTarget as DeployTarget | undefined;
+	if (t && 'paths' in t && typeof t.paths?.resource === 'string') deployTo = { install: pathsInstall(t.paths), custom: true };
+	else deployTo = { install: (t && 'install' in t && installs.find((i) => i.name === t.install)) || installs[0] || null, custom: false };
+	return deployTo;
+}
+const gameStatus = (): DesktopGameStatus => {
+	const t = deployTarget();
+	return {
+		connected: connect.connected,
+		port: connect.port,
+		installs: installs.map((i) => i.name),
+		target: t.install ? { name: t.custom ? 'Custom paths' : t.install.name, custom: t.custom, paths: installPaths(t.install) } : null,
+		error: connect.error,
+	};
+};
 connect.onStatus = () => win?.webContents.send('gameStatus', gameStatus());
 
 const gameLog: DesktopLogEntry[] = [];
 let logPath: string | null = null;
 let logOffset = 0;
 function pollContentLog() {
-	const install = installs[0];
+	// the log of the game packs deploy to
+	const install = deployTarget().install;
 	if (!install) return;
 	const latest = latestContentLog(install);
 	if (!latest) return;
@@ -188,10 +213,9 @@ function pollContentLog() {
 		logOffset = statSync(latest).size;
 		return;
 	}
-	const size = statSync(latest).size;
-	if (size <= logOffset) return;
-	const text = readFileSync(latest).subarray(logOffset, size).toString('utf8');
-	logOffset = size;
+	const { text, end } = readLogSince(latest, logOffset);
+	logOffset = end;
+	if (!text) return;
 	const entries = parseContentLog(text).filter((e) => e.file);
 	if (!entries.length) return;
 	for (const e of entries) gameLog.push({ file: e.file, level: e.level, message: e.message, expression: e.expression, path: entryPath(e) });
@@ -231,6 +255,12 @@ function registerIpc() {
 		effectIndex.delete(currentPack);
 		return currentPack;
 	});
+	ipcMain.handle('pickImage', async () => {
+		const r = await dialog.showOpenDialog(win!, { properties: ['openFile'], title: 'Import a texture image', filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }] });
+		const path = r.filePaths[0];
+		if (r.canceled || !path) return null;
+		return { name: basename(path), base64: readFileSync(path).toString('base64') };
+	});
 	ipcMain.handle('readTexture', (_e, file: string | null, texture: string) => {
 		const root = packRoot(file) ?? '';
 		if (!texture) return null;
@@ -249,6 +279,30 @@ function registerIpc() {
 		if (!root) return false;
 		writeFileSync(join(root, `${texture.replace(/\.(png|tga)$/i, '')}.png`), Buffer.from(b64, 'base64'));
 		return true;
+	});
+	ipcMain.handle('saveCapture', (_e, name: string, b64: string) => {
+		const dir = join(app.getPath('pictures'), 'Oxygen');
+		mkdirSync(dir, { recursive: true });
+		const path = join(dir, basename(name));
+		writeFileSync(path, Buffer.from(b64, 'base64'));
+		return path;
+	});
+	// a file on the clipboard, the way each system's file manager puts one there (and its path as text)
+	ipcMain.handle('copyFile', async (_e, path: string) => {
+		if (!existsSync(path)) return false;
+		const raw = (format: string) => `electron application/osclipboard;format="${format}"`;
+		const url = pathToFileURL(path).href;
+		const items: Record<string, string | Blob> = { 'text/plain': path };
+		if (process.platform === 'win32') items[raw('FileNameW')] = new Blob([Buffer.from(`${path} `, 'ucs2')]);
+		else if (process.platform === 'darwin') items[raw('public.file-url')] = url;
+		else items['text/uri-list'] = `${url}
+`;
+		try {
+			await clipboard.write([new ClipboardItem(items)]);
+			return true;
+		} catch {
+			return false;
+		}
 	});
 	ipcMain.handle('readPackText', (_e, file: string | null, path: string) => {
 		const root = packRoot(file);
@@ -314,16 +368,35 @@ function registerIpc() {
 		storeSettings();
 	});
 	ipcMain.handle('gameStatus', () => gameStatus());
+	ipcMain.handle('setDeployTarget', (_e, choice: { install: string } | { paths: DeployPaths }) => {
+		if ('paths' in choice) {
+			const { resource, behavior, logs } = choice.paths;
+			if (!resource?.trim()) throw new Error('Set the folder resource packs are copied into.');
+			settings.deployTarget = { paths: { resource: resolve(resource.trim()), behavior: behavior?.trim() ? resolve(behavior.trim()) : null, logs: logs?.trim() ? resolve(logs.trim()) : null } } satisfies DeployTarget;
+		} else settings.deployTarget = { install: choice.install } satisfies DeployTarget;
+		storeSettings();
+		deployTo = null;
+		const s = gameStatus();
+		win?.webContents.send('gameStatus', s);
+		return s;
+	});
+	ipcMain.handle('pickDeployPath', async (_e, kind: keyof DeployPaths, current: string | null) => {
+		const title = { resource: 'Choose the folder to copy resource packs into', behavior: 'Choose the folder to copy behavior packs (Oxygen Link) into', logs: "Choose the game's content log folder, or a log file" }[kind];
+		// the log can be one file; on Windows and Linux a dialog can't offer files and folders at once
+		const r = await dialog.showOpenDialog(win!, { title, defaultPath: current ?? undefined, properties: kind === 'logs' && process.platform === 'darwin' ? ['openDirectory', 'openFile'] : ['openDirectory', 'createDirectory'] });
+		return r.canceled ? null : (r.filePaths[0] ?? null);
+	});
+	ipcMain.handle('suggestDeployPaths', (_e, resource: string) => installPaths(folderInstall(resource, installs)));
 	ipcMain.handle('deploy', (_e, file: string | null) => {
 		const root = packRoot(file);
 		if (!root || !existsSync(join(root, 'manifest.json'))) throw new Error("This file isn't inside a resource pack with a manifest.json, so there's nothing to deploy.");
-		const install = installs[0];
-		if (!install) throw new Error('No Minecraft install found.');
+		const install = deployTarget().install;
+		if (!install) throw new Error('No Minecraft install found. Choose a folder under Deploy to.');
 		const pack = readPack(root);
 		const { target, addedPbr } = deployPackDetailed(pack, install);
 		// Oxygen Link: spawns with a variable map for scenarios (enable it once in the test world)
-		deployHelper(install);
-		return `Deployed “${pack.name}” to ${install.name} (${basename(dirname(target))}).${addedPbr ? ' Its manifest lacks the "pbr" capability, which turns Vibrant Visuals off in-game, so the deployed copy got it for testing. Add it to your manifest before you ship.' : ''}`;
+		const helper = deployHelper(install);
+		return `Deployed “${pack.name}” to ${deployTarget().custom ? dirname(target) : `${install.name} (${basename(dirname(target))})`}.${helper ? '' : " Oxygen Link (spawning with a scenario's variables) wasn't deployed: it's a behavior pack, and this folder has no behavior_packs next to it."}${addedPbr ? ' Its manifest lacks the "pbr" capability, which turns Vibrant Visuals off in-game, so the deployed copy got it for testing. Add it to your manifest before you ship.' : ''}`;
 	});
 	ipcMain.handle('spawn', async (_e, identifier: string, variables?: Record<string, number | number[]>, offset?: [number, number, number]) => {
 		if (variables && Object.keys(variables).length) {
@@ -344,6 +417,7 @@ let menuKeys: Record<string, string | null> = {
 	new: 'CmdOrCtrl+Alt+N',
 	open: 'CmdOrCtrl+O',
 	openPack: null,
+	importTexture: null,
 	save: 'CmdOrCtrl+S',
 	palette: 'CmdOrCtrl+K',
 	settings: 'CmdOrCtrl+,',
@@ -361,6 +435,7 @@ function buildMenu() {
 				item('New effect', 'new'),
 				item('Open…', 'open'),
 				item('Open resource pack folder…', 'openPack'),
+				item('Import texture image…', 'importTexture'),
 				{ type: 'separator' },
 				item('Save', 'save'),
 				{ type: 'separator' },
@@ -401,6 +476,20 @@ function createWindow() {
 		return { action: 'deny' };
 	});
 	void win.loadFile(join(__dirname, 'renderer', 'index.html'));
+	// text fields get the usual edit menu (Electron has none); Oxygen's own menus prevent this where they open
+	win.webContents.on('context-menu', (_e, params) => {
+		if (!params.isEditable) return;
+		const items: MenuItemConstructorOptions[] = [
+			...params.dictionarySuggestions.slice(0, 4).map((w): MenuItemConstructorOptions => ({ label: w, click: () => win?.webContents.replaceMisspelling(w) })),
+			...(params.dictionarySuggestions.length ? [{ type: 'separator' } as const] : []),
+			{ role: 'cut', enabled: params.editFlags.canCut },
+			{ role: 'copy', enabled: params.editFlags.canCopy },
+			{ role: 'paste', enabled: params.editFlags.canPaste },
+			{ type: 'separator' },
+			{ role: 'selectAll' },
+		];
+		Menu.buildFromTemplate(items).popup({ window: win ?? undefined });
+	});
 	win.on('closed', () => (win = null));
 }
 
@@ -415,6 +504,8 @@ else {
 	});
 	app.whenReady().then(() => {
 		loadSettings();
+		// the deploy target comes from the settings
+		deployTo = null;
 		registerIpc();
 		buildMenu();
 		// a taken port moves on to the next free one; the Game menu shows which (or why none)

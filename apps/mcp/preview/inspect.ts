@@ -4,7 +4,7 @@ import { readMeta } from '@oxygen/format';
 import type { EffectSession, ViewportScene } from '@oxygen/ui';
 import type { EffectDefinition, EmitterInstance, Vec3 } from 'wintersky';
 import { compileIn, evaluateInEmitter, runIsolated, watchField } from '../src/debug/evaluate';
-import { encodeGif, type Rgba } from '../src/debug/gif';
+import { encodeGif, type Rgba } from '@oxygen/ui/lib/gif';
 import { emitterRecord, facingRecord, logRecord, PARTICLE_FIELDS, particleRecord, r, rv, traceRecord, val, type ParticleField } from '../src/debug/records';
 import type { InspectQuery, InspectRequest, InspectResult } from '../src/protocol';
 import { closeScene, DT, framing, openScene, openSession, restartClean, round3, settle } from './session';

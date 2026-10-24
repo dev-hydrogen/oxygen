@@ -69,6 +69,8 @@ export function pathAt(m: Extract<Motion, { kind: 'path' }>, t: number): { posit
 
 export interface EntitySettings {
 	motion: Motion;
+	/** where it stands, or the point its motion goes round (a path's points are relative to it); the world origin when unset */
+	origin?: Vec3;
 	/** the locator effects are attached to; empty for none (the entity's own position) */
 	locator: string;
 	/** the model's locators (made here or imported from a geometry file) */
@@ -270,7 +272,20 @@ export class EntityDummy {
 	time = 0;
 	alive = true;
 
-	constructor(public settings: EntitySettings = DEFAULT_ENTITY) {
+	private current: EntitySettings;
+
+	constructor(settings: EntitySettings = DEFAULT_ENTITY) {
+		this.current = settings;
+		this.update(0);
+	}
+
+	get settings(): EntitySettings {
+		return this.current;
+	}
+
+	/** New settings take effect at once: an unbound effect spawned next starts where the entity stands now */
+	set settings(next: EntitySettings) {
+		this.current = next;
 		this.update(0);
 	}
 
@@ -327,6 +342,8 @@ export class EntityDummy {
 				break;
 			}
 		}
+		const o = this.settings.origin;
+		if (o) this.position = [this.position[0] + o[0], this.position[1] + o[1], this.position[2] + o[2]];
 		if (dt > 0) this.velocity = [(this.position[0] - prev[0]) / dt, (this.position[1] - prev[1]) / dt, (this.position[2] - prev[2]) / dt];
 		if (this.settings.removeAfter !== undefined && this.time - this.bornAt >= this.settings.removeAfter) this.alive = false;
 	}
@@ -361,6 +378,14 @@ export class EntityDummy {
 			scale = loc.ignoreScale ? 1 : s;
 		}
 		return { position, rotation: quatFromMat(m), scale, axes: [[m[0], m[3], m[6]], [m[1], m[4], m[7]], [m[2], m[5], m[8]]] };
+	}
+
+	/** A move in the world as a change of a locator's offset, in model units: what dragging a locator does */
+	modelDelta(d: Vec3): Vec3 {
+		const m = mul(yawTurn(this.yaw), MODEL);
+		// a rotation (and a mirror): its inverse is its transpose
+		const k = 16 / (this.scale || 1);
+		return [(m[0] * d[0] + m[3] * d[1] + m[6] * d[2]) * k, (m[1] * d[0] + m[4] * d[1] + m[7] * d[2]) * k, (m[2] * d[0] + m[5] * d[1] + m[8] * d[2]) * k];
 	}
 
 	locatorPosition(name: string): Vec3 {

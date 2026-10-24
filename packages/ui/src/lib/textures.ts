@@ -9,7 +9,7 @@ import type { EffectSession } from '../state/session.svelte';
  * Loads particle textures through the host, cached per file. Returns null while loading or when missing,
  * so the renderer shows the magenta-black missing texture, like the game.
  */
-export function createTextureProvider(host: Host, getSession: () => EffectSession | null, packVersion: () => number = () => 0): TextureProvider {
+export function createTextureProvider(host: Pick<Host, 'resolveTexture'>, getSession: () => EffectSession | null, packVersion: () => number = () => 0): TextureProvider {
 	const cache = new Map<string, THREE.Texture | null | 'loading'>();
 	/** last loaded texture per file+path, shown while a newer version (a painted override) loads */
 	const last = new Map<string, THREE.Texture>();
@@ -59,7 +59,7 @@ export function createTextureProvider(host: Host, getSession: () => EffectSessio
  * in the pack (child effects and scene effects included). The open effect's own texture uses the session's set,
  * so edits in the Vibrant Visuals panel show before they're saved. Uniform texture-set values become 1×1 textures.
  */
-export function createMersProvider(host: Host, getSession: () => EffectSession | null, packVersion: () => number = () => 0): TextureProvider {
+export function createMersProvider(host: Pick<Host, 'resolveTexture' | 'readPackText'>, getSession: () => EffectSession | null, packVersion: () => number = () => 0): TextureProvider {
 	const cache = new Map<string, THREE.Texture | null | 'loading'>();
 	/** texture sets of other textures than the session's own, by pack version, file and texture path */
 	const sets = new Map<string, TextureSet | null | 'loading'>();

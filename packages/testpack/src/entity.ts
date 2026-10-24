@@ -271,6 +271,44 @@ RIG_EFFECTS.param_local = flag('0.25', { 'minecraft:particle_motion_parametric':
 RIG_EFFECTS.update_query = flag('v.e > 0 ? 0.3 : 0', { 'minecraft:emitter_initialization': { per_update_expression: 'v.e = q.variant;' } });
 RIG_EFFECTS.trail_short = trail({ 'minecraft:particle_lifetime_expression': { max_lifetime: 1.5 } }, [1, 1, 1, 1]);
 delete RIG_EFFECTS.param_world.particle_effect.components['minecraft:emitter_local_space'];
+
+// ---------------------------------------------------------------- e32: where world-space parametric positions are measured from
+//
+// Every e32 rig fires a green flag at relative_position [1, 2, 0], beside the rig if positions are measured from
+// the emitter or the entity, and a red one at the rig's own world position + [1, 2, 0], beside the rig if they're
+// measured from the world origin (the rows are thousands of blocks from it, so the other one is far out of sight).
+// placeE32 writes the red ones once the rows are laid out.
+
+/** A world-space flag whose particle sits at `rel` (Molang) by parametric motion */
+function paramFlag(rel: unknown[], colour: number[]): Json {
+	const fx = flag('0.4', { 'minecraft:particle_motion_parametric': { relative_position: rel } }, colour);
+	delete fx.particle_effect.components['minecraft:emitter_local_space'];
+	return fx;
+}
+/** A world-space stream: 8 dots a second, each at `rel` (Molang) by parametric motion, living 3 s */
+function paramStream(rel: unknown[], colour: number[]): Json {
+	return trail({ 'minecraft:emitter_rate_steady': { spawn_rate: 8, max_particles: 100 }, 'minecraft:particle_motion_parametric': { relative_position: rel }, 'minecraft:particle_lifetime_expression': { max_lifetime: 3 } }, colour);
+}
+const E32_GREEN = [0.3, 1, 0.3, 1];
+const E32_RED = [1, 0.25, 0.25, 1];
+/** like aurora: the position moves with the particle's age */
+const E32_WOBBLE = 'math.sin(v.particle_age * 90) * 0.5';
+RIG_EFFECTS.e32_g = paramFlag([1, 2, 0], E32_GREEN);
+RIG_EFFECTS.e32_ga = paramFlag([`1 + ${E32_WOBBLE}`, 2, 0], E32_GREEN);
+RIG_EFFECTS.e32_gs = paramStream([1, 2, 0], E32_GREEN);
+/** which red flag each e32 probe fires (its own world position is filled in by placeE32) */
+const E32_RED_KINDS: ('flag' | 'wobble' | 'stream')[] = ['flag', 'flag', 'wobble', 'flag', 'stream', 'flag', 'flag'];
+E32_RED_KINDS.forEach((_, j) => (RIG_EFFECTS[`e32_o${j}`] = paramFlag([0, 0, 0], E32_RED)));
+
+/** Write the red flags of e32: probe j's rig stands at stations[j] (world coordinates of its feet) */
+export function placeE32(stations: [number, number, number][]): void {
+	E32_RED_KINDS.forEach((kind, j) => {
+		const [x, y, z] = stations[j];
+		const rel = [kind === 'wobble' ? `${x + 1} + ${E32_WOBBLE}` : x + 1, y + 2, z];
+		RIG_EFFECTS[`e32_o${j}`] = kind === 'stream' ? paramStream(rel, E32_RED) : paramFlag(rel, E32_RED);
+	});
+}
+
 // q.position: a bar from the emitter, height q.position(1) + 61 (no locator: 1 block if it is the entity's feet)
 RIG_EFFECTS.posbar = effect({
 	'minecraft:emitter_local_space': { position: true, rotation: true },
@@ -1312,6 +1350,24 @@ export const ENTITY_TESTS: EntityTest[] = [
 		assumption: 'To be read from the content log.',
 		wait: 3,
 		probes: [{ id: 'l1', reads: 'read the content log', script: { timeline: { '0.5': "v.o = q.bone_origin('qbox'); q.log(1000 + v.o.x); q.log(2000 + v.o.y); q.log(3000 + v.o.z); v.o = q.bone_origin('qz'); q.log(1100 + v.o.x); q.log(2100 + v.o.y); q.log(3100 + v.o.z); v.o = q.bone_origin('root'); q.log(1200 + v.o.x); q.log(2200 + v.o.y); q.log(3200 + v.o.z); v.o = q.bone_origin('ash'); q.log(1300 + v.o.x); q.log(2300 + v.o.y); q.log(3300 + v.o.z); v.o = q.bone_aabb('qbox'); q.log(4000 + v.o.min.x); q.log(5000 + v.o.min.y); q.log(6000 + v.o.min.z); q.log(7000 + v.o.max.x); q.log(8000 + v.o.max.y); q.log(9000 + v.o.max.z); v.o = q.bone_rotation('qrot'); q.log(1400 + v.o.x); q.log(2400 + v.o.y); q.log(3400 + v.o.z); v.o = q.bone_rotation('arx'); q.log(1500 + v.o.x); q.log(2500 + v.o.y); q.log(3500 + v.o.z); v.o = q.bone_orientation_trs('qz'); q.log(1600 + v.o.t.x); q.log(2600 + v.o.t.y); q.log(3600 + v.o.t.z); q.log(4100 + q.life_time); q.log(4200 + q.delta_time); q.log(4300 + q.anim_time);" }, loop: 1 }, fire: [{ effect: 'dot' }] }],
+	},
+	{
+		id: 'e32',
+		title: 'Where world-space parametric positions on an entity are measured from',
+		question:
+			'A world-space emitter on an entity with particle_motion_parametric relative_position: is the position measured from the world origin (e10), from the entity now, from where the emitter spawned, or from where each particle was born? Green flag = [1,2,0] (beside the rig unless measured from the world origin); red flag = the rig’s world position + [1,2,0] (beside the rig only if measured from the world origin).',
+		assumption: 'From the world origin (e10): only red flags, beside each rig, and they stay put when the rig moves.',
+		wait: 5,
+		spacing: 7,
+		probes: [
+			{ id: 'g1', reads: 'still, no locator: green or red flag 1 east, 2 up?', fire: [{ effect: 'e32_g' }, { effect: 'e32_o0' }, at()] },
+			{ id: 'g2', reads: 'still, locator up (the e10 case): green or red?', fire: [{ effect: 'e32_g', locator: 'up' }, { effect: 'e32_o1', locator: 'up' }, at('up')] },
+			{ id: 'g3', reads: 'like aurora: the position moves with v.particle_age (the flag wobbles ±0.5 in x)', fire: [{ effect: 'e32_ga' }, { effect: 'e32_o2' }, at()] },
+			{ id: 'g4', reads: 'bind_to_actor false, no locator', fire: [{ effect: 'e32_g', bind_to_actor: false }, { effect: 'e32_o3', bind_to_actor: false }, at()] },
+			{ id: 'g5', reads: 'moving 3 east and back from 1 s: a stream (8 dots/s, 3 s each). Over the rig now (follows it), at its start (stays), or a trail (each dot where the rig was when it was born)?', move: { kind: 'line', radius: 3, speed: 1.5, after: 1 }, fire: [{ effect: 'e32_gs' }, { effect: 'e32_o4' }] },
+			{ id: 'g6', reads: 'moving 3 east and back from 1 s: one flag spawned before it moves. Follows the rig, or stays at its start?', move: { kind: 'line', radius: 3, speed: 1.5, after: 1 }, fire: [{ effect: 'e32_g' }, { effect: 'e32_o5' }, at()] },
+			{ id: 'g7', reads: 'control: the same flags spawned by /particle at the rig (not on it)', later: [{ after: 0.3, command: 'particle oxygen:rig_e32_g ~ ~ ~' }, { after: 0.3, command: 'particle oxygen:rig_e32_o6 ~ ~ ~' }] },
+		],
 	},
 ];
 

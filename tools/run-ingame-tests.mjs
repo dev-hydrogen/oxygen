@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Drives the Oxygen test pack in a running Minecraft (world "Oxygen Test Lab" loaded) through BedrockMCP:
 // runs each test function, waits, and saves screenshots to test-results/ingame/<test>[_view].png
-//   node tools/run-ingame-tests.mjs [t01 t02 … e01 …] [--setup]
+//   node tools/run-ingame-tests.mjs [t01 t02 … e01 … s01 …] [--setup]
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,8 +21,8 @@ void tests;
 
 // test ids + waits from the generated checklist (keeps this script dependency-free)
 const checklist = readFileSync(join(root, 'packages', 'testpack', 'out', 'CHECKLIST.md'), 'utf8');
-const entries = [...checklist.matchAll(/^## ([te]\d+) — .*?\n[\s\S]*?Wait ([\d.]+)s/gm)].map((m) => ({ id: m[1], wait: parseFloat(m[2]) }));
-const selected = args.filter((a) => /^[te]\d+$/.test(a));
+const entries = [...checklist.matchAll(/^## ([tes]\d+) — .*?\n[\s\S]*?Wait ([\d.]+)s/gm)].map((m) => ({ id: m[1], wait: parseFloat(m[2]) }));
+const selected = args.filter((a) => /^[tes]\d+$/.test(a));
 const run = selected.length ? entries.filter((e) => selected.includes(e.id)) : entries;
 
 mcp('call', 'focus');

@@ -3,6 +3,8 @@
 	import { PHASE_VAR } from '../../lib/molang-text';
 	import Toggle from '../fields/Toggle.svelte';
 	import { explainFacing } from '../../lib/facing-text';
+	import EditValue from '../fields/EditValue.svelte';
+	import type { Value } from 'molangjs';
 
 	interface Props {
 		workspace: Workspace;
@@ -101,11 +103,13 @@
 	});
 
 	/**
-	 * The variables and temps the selected particle's own expressions use, as its turn in the last frame left them:
-	 * after its update (spawn, update and its events) and after its render. Variables belong to the emitter, so the
-	 * shared state further down only shows what the last particle left; an index a particle takes from a counter
-	 * shows here.
+	 * The variables and temps the selected particle's own expressions use, through its turn in the last frame, in
+	 * two passes: its update (spawn, update and its events) and its render. Variables belong to the emitter, so a
+	 * value it only reads in a pass is whatever ran before it there: the emitter, an earlier particle, or (in the
+	 * render pass, which starts once every particle has updated) the last particle's update. Those show dim; what its
+	 * own expressions set shows plain.
 	 */
+	type Use = { state: 'set' | 'read' | 'none'; value: Value | undefined };
 	const turn = $derived.by(() => {
 		void tickN;
 		void session?.debugVersion;
@@ -118,23 +122,44 @@
 		const add = (n: string) => {
 			if (!names.includes(n) && !n.startsWith('variable.particle_') && !n.startsWith('variable.emitter_')) names.push(n);
 		};
+		const uses = (t: (typeof own)[number]) => s.analysis.byPath.get(t.path)?.analysis;
 		for (const t of own) {
-			const a = s.analysis.byPath.get(t.path)?.analysis;
+			const a = uses(t);
 			for (const u of [...(a?.writes ?? []), ...(a?.reads ?? [])]) if (u.ns === 'variable' || u.ns === 'temp') add(u.name);
 		}
-		const last = (render: boolean) => {
-			for (let i = own.length - 1; i >= 0; i--) if ((own[i].phase === 'render') === render) return own[i];
-			return null;
-		};
-		const value = (t: (typeof own)[number] | null, name: string) => {
-			if (!t) return undefined;
+		const pass = (render: boolean) => own.filter((t) => (t.phase === 'render') === render);
+		const valueIn = (t: (typeof own)[number], name: string, before: boolean): Value | undefined => {
 			if (name.startsWith('temp.')) return t.temps.find(([k]) => k === name)?.[1];
-			return t.varsAfter[name];
+			return (before ? t.varsBefore : t.varsAfter)[name];
 		};
-		const update = last(false);
-		const render = last(true);
-		return { hasRender: !!render, rows: names.map((n) => ({ name: n, update: value(update, n), render: value(render, n) })) };
+		/** set: the value its last write left; read only: the value it saw first */
+		const use = (list: typeof own, name: string): Use => {
+			let wrote: (typeof own)[number] | null = null;
+			let read: (typeof own)[number] | null = null;
+			for (const t of list) {
+				const a = uses(t);
+				if (a?.writes.some((w) => w.name === name)) wrote = t;
+				else if (!read && a?.reads.some((r) => r.name === name)) read = t;
+			}
+			if (wrote) return { state: 'set', value: valueIn(wrote, name, false) };
+			if (read) return { state: 'read', value: valueIn(read, name, true) };
+			return { state: 'none', value: undefined };
+		};
+		const update = pass(false);
+		const render = pass(true);
+		return { hasRender: render.length > 0, rows: names.map((n) => ({ name: n, update: use(update, n), render: use(render, n) })) };
 	});
+
+	/** change a value of the inspected particle or emitter (not mid-step) */
+	function edit(what: string, v: Value) {
+		const sel = session?.selection;
+		if (!session || !sel) return;
+		session.setDebugValue(sel.emitter, sel.particle, what, v);
+	}
+	const READ_TIP = 'It only read this here: the value came from whatever ran before it in this pass (the emitter, an earlier particle, or in the render pass the last particle’s update)';
+	const SET_TIP = 'Its own expressions set this here';
+	const EDIT_NOTE = 'Drag or type a value to change it in the preview from now on, as if the effect had set it. The game has nothing like this; restarting plays the effect as written.';
+	const HALT_NOTE = 'Finish the frame (Next frame) to change values.';
 
 	function f(n: number, d = 3) {
 		if (Number.isNaN(n)) return 'NaN';
@@ -211,7 +236,7 @@
 					<h4>Variables</h4>
 					<div class="grid vars ox-num">
 						{#each Object.entries(einfo.vars).filter(([k]) => !k.startsWith('variable.particle_')) as [k, v] (k)}
-							<span class="ox-code">{short(k)}</span><span>{show(v)}</span>
+							<span class="ox-code">{short(k)}</span><EditValue label={short(k)} value={v} text={show(v)} disabled={!!session.halt} onchange={(x) => edit(k, x)} />
 						{:else}
 							<span class="dim">none</span><span></span>
 						{/each}
@@ -219,9 +244,10 @@
 					{#if einfo.temps.length}
 						<h4>Temps <span class="dim">(global in-game)</span></h4>
 						<div class="grid vars ox-num">
-							{#each einfo.temps as [k, v] (k)}<span class="ox-code">{short(k)}</span><span>{show(v)}</span>{/each}
+							{#each einfo.temps as [k, v] (k)}<span class="ox-code">{short(k)}</span><EditValue label={short(k)} value={v} text={show(v)} disabled={!!session.halt} onchange={(x) => edit(k, x)} />{/each}
 						</div>
 					{/if}
+					<p class="explain">{session.halt ? HALT_NOTE : EDIT_NOTE}</p>
 				{/if}
 			{:else if !pinfo || pinfo.gone}
 				<p class="empty">Particle #{session.selection.particle} has expired. <button class="link" onclick={() => session.select(null)}>Clear</button></p>
@@ -233,11 +259,11 @@
 					<button class="link" onclick={() => session.select(null)}>Clear</button>
 				</div>
 				<div class="grid ox-num">
-					<span>Age</span><span>{f(pinfo.age)} s{pinfo.lifetime !== null ? ` of ${f(pinfo.lifetime)} s` : ' (no max lifetime)'}</span>
-					<span>Position</span><span>{pinfo.pos.map((n) => f(n)).join(', ')}{pinfo.local ? ' (emitter space)' : ''}</span>
-					<span>Velocity</span><span>{pinfo.vel.map((n) => f(n)).join(', ')}</span>
+					<span>Age</span><span class="vals"><EditValue label="Age" value={pinfo.age} text="{f(pinfo.age)} s" disabled={!!session.halt} step={0.05} onchange={(v) => edit('age', v)} /><span class="dim">s of</span>{#if pinfo.lifetime !== null}<EditValue label="Lifetime" value={pinfo.lifetime} text="{f(pinfo.lifetime)} s" disabled={!!session.halt} step={0.05} onchange={(v) => edit('lifetime', v)} /><span class="dim">s</span>{:else}<span class="dim">no max lifetime</span>{/if}</span>
+					<span>Position</span><span class="vals">{#each ['x', 'y', 'z'] as k, a (k)}<EditValue label="Position {k}" value={pinfo.pos[a]} text={f(pinfo.pos[a])} disabled={!!session.halt} onchange={(v) => edit(`pos.${k}`, v)} />{/each}{#if pinfo.local}<span class="dim">emitter space</span>{/if}</span>
+					<span>Velocity</span><span class="vals">{#each ['x', 'y', 'z'] as k, a (k)}<EditValue label="Velocity {k}" value={pinfo.vel[a]} text={f(pinfo.vel[a])} disabled={!!session.halt} onchange={(v) => edit(`vel.${k}`, v)} />{/each}</span>
 					<span>Size</span><span>{pinfo.size.map((n) => f(n)).join(' × ')}</span>
-					<span>Rotation</span><span>{f(pinfo.rot, 1)}°</span>
+					<span>Rotation</span><span class="vals"><EditValue label="Rotation" value={pinfo.rot} text="{f(pinfo.rot, 1)}°" disabled={!!session.halt} step={1} onchange={(v) => edit('rot', v)} /><span class="dim">°</span></span>
 					<span>Facing dir</span><span>{pinfo.facing.map((n) => f(n)).join(', ')}</span>
 					<span>Color</span><span class="col"><span class="sw" style:--c="rgba({pinfo.color[0]},{pinfo.color[1]},{pinfo.color[2]},{pinfo.color[3] / 255})"></span>{pinfo.color.join(', ')}</span>
 					<span>UV</span><span>{pinfo.uv.map((n) => f(n, 4)).join(', ')}</span>
@@ -271,11 +297,18 @@
 				</ol>
 
 				{#if turn?.rows.length}
-					<h4>Its turn <span class="dim">(the values its own expressions left in the last frame)</span></h4>
+					<h4>Its turn <span class="dim">(what its own expressions used in the last frame)</span></h4>
+					<p class="explain">
+						Variables belong to the emitter, and every particle takes its turn with them. Plain values are what this particle set; <span class="faint">dim ones</span> it only read, so they're whatever ran before it in that pass. Render comes after every particle's update, so a value only the update sets reads there as the last particle left it.
+					</p>
 					<div class="grid turn ox-num" class:two={turn.hasRender}>
-						<span class="dim">Variable</span><span class="dim">After its update</span>{#if turn.hasRender}<span class="dim">After its render</span>{/if}
+						<span class="dim">Variable</span><span class="dim">In its update</span>{#if turn.hasRender}<span class="dim">In its render</span>{/if}
 						{#each turn.rows as r (r.name)}
-							<span class="ox-code">{short(r.name)}</span><span>{r.update === undefined ? '—' : show(r.update)}</span>{#if turn.hasRender}<span>{r.render === undefined ? '—' : show(r.render)}</span>{/if}
+							<span class="ox-code">{short(r.name)}</span>
+							{#each turn.hasRender ? [r.update, r.render] : [r.update] as u, k (k)}
+								{#if u.state === 'none'}<span class="faint" title="Not used in this pass">—</span>
+								{:else}<span class:faint={u.state === 'read'} title={u.state === 'read' ? READ_TIP : SET_TIP}>{u.value === undefined ? 'unset' : show(u.value)}{#if u.state === 'read'}<span class="tag">read</span>{/if}</span>{/if}
+							{/each}
 						{/each}
 					</div>
 				{/if}
@@ -283,7 +316,7 @@
 				<h4>Variables <span class="dim">(shared by every particle of the emitter, as the last one left them)</span></h4>
 				<div class="grid vars ox-num">
 					{#each Object.entries(pinfo.vars).filter(([k]) => !k.startsWith('variable.particle_') && !k.startsWith('variable.emitter_')) as [k, v] (k)}
-						<span class="ox-code">{short(k)}</span><span>{show(v)}</span>
+						<span class="ox-code">{short(k)}</span><EditValue label={short(k)} value={v} text={show(v)} disabled={!!session.halt} onchange={(x) => edit(k, x)} />
 					{:else}
 						<span class="dim">none</span><span></span>
 					{/each}
@@ -291,9 +324,10 @@
 				{#if pinfo.temps.length}
 					<h4>Temps <span class="dim">(global in-game)</span></h4>
 					<div class="grid vars ox-num">
-						{#each pinfo.temps as [k, v] (k)}<span class="ox-code">{short(k)}</span><span>{show(v)}</span>{/each}
+						{#each pinfo.temps as [k, v] (k)}<span class="ox-code">{short(k)}</span><EditValue label={short(k)} value={v} text={show(v)} disabled={!!session.halt} onchange={(x) => edit(k, x)} />{/each}
 					</div>
 				{/if}
+				<p class="explain">{session.halt ? HALT_NOTE : EDIT_NOTE}</p>
 			{/if}
 		{:else}
 			<div class="logbar">
@@ -324,6 +358,27 @@
 </div>
 
 <style>
+	.vals {
+		display: flex;
+		align-items: center;
+		gap: 2px 8px;
+		flex-wrap: wrap;
+	}
+	.explain {
+		margin: 2px 10px 6px;
+		color: var(--ox-text-dim);
+		font-size: 11.5px;
+		max-width: 70ch;
+	}
+	.faint {
+		color: var(--ox-text-dim);
+	}
+	.tag {
+		margin-left: 5px;
+		font-size: 10.5px;
+		color: var(--ox-text-dim);
+		font-family: var(--ox-font-ui);
+	}
 	.facing {
 		padding: 0 10px 6px;
 		display: flex;
@@ -405,6 +460,13 @@
 	}
 	.grid > span:nth-child(odd) {
 		color: var(--ox-haze);
+	}
+	.grid.turn > span {
+		color: var(--ox-frost);
+	}
+	.grid.turn > span.faint,
+	.grid.turn > span.dim {
+		color: var(--ox-text-dim);
 	}
 	.grid.turn {
 		grid-template-columns: auto auto;

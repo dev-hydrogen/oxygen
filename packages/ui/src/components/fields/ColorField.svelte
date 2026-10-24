@@ -39,6 +39,14 @@
 		return null;
 	}
 
+	/** What to draw for a color whose channels may be Molang: its numbers, grey where a channel is an expression */
+	function shown(v: unknown): RGBA {
+		const c = constant(v);
+		if (c) return c;
+		if (!Array.isArray(v)) return [0.5, 0.5, 0.5, 1];
+		return [0, 1, 2, 3].map((i) => (typeof v[i] === 'number' ? v[i] : i === 3 && v[i] === undefined ? 1 : 0.5)) as RGBA;
+	}
+
 	/** each kind remembers what it held, so going back to it restores the work */
 	function setMode(m: string) {
 		const c = constant(value) ?? [1, 1, 1, 1];
@@ -81,7 +89,8 @@
 		pickTimer = null;
 		const p = pickPending;
 		pickPending = null;
-		if (p) session.doc.set(p.at, toBedrockHex(p.c), 'Edit color');
+		// a stop written as channels stays channels
+		if (p) session.doc.set(p.at, Array.isArray(session.doc.get(p.at)) ? p.c.map(round3) : toBedrockHex(p.c), 'Edit color');
 	}
 	function pick(at: string, c: RGBA, done: boolean) {
 		pickPending = { at, c };
@@ -99,7 +108,7 @@
 
 	const gradientCss = $derived(
 		stops.length
-			? `linear-gradient(90deg, ${stops.map((s) => `${toCss(constant(s.color) ?? [0.5, 0.5, 0.5, 1])} ${(Math.min(1, Math.max(0, s.key)) * 100).toFixed(1)}%`).join(', ')})`
+			? `linear-gradient(90deg, ${stops.map((s) => `${toCss(shown(s.color))} ${(Math.min(1, Math.max(0, s.key)) * 100).toFixed(1)}%`).join(', ')})`
 			: 'none',
 	);
 
@@ -127,6 +136,13 @@
 			const k = keys.length ? Math.min(1, (keys[keys.length - 1] + 1) / 2) : 0.5;
 			session.doc.set(joinPath(path, 'gradient', k.toFixed(2)), '#FFFFFFFF', 'Add gradient stop');
 		}
+	}
+
+	/** A stop as [r, g, b, a] Molang (the game evaluates the stops its interpolant uses), or back to a hex color */
+	function setStopKind(at: string, color: unknown, channels: boolean) {
+		const c = shown(color);
+		if (channels) session.switchKind(at, 'hex', 'channels', c.map(round3), 'Use Molang for a gradient stop');
+		else session.switchKind(at, 'channels', 'hex', toBedrockHex(c), 'Use a color for a gradient stop');
 	}
 
 	function removeStop(rawKey: string) {
@@ -182,6 +198,7 @@
 		{#each stops as s (s.rawKey)}
 			{@const sp = joinPath(path, 'gradient', s.rawKey)}
 			{@const sc = constant(s.color)}
+			{@const channels = Array.isArray(s.color)}
 			<div class="stop">
 				{#if s.evenly}
 					<span class="key ox-num" title="Evenly spaced">{s.key.toFixed(2)}</span>
@@ -191,18 +208,39 @@
 				{#if sc}
 					<ColorPicker value={sc} label="Stop color picker" oninput={(x) => pick(sp, x, false)} onchange={(x) => pick(sp, x, true)} />
 				{:else}
-					<span class="dot" style:--c={toCss([0.5, 0.5, 0.5, 1])}></span>
+					<span class="dot" style:--c={toCss(shown(s.color))}></span>
 				{/if}
-				<input
-					class="hex ox-code"
-					aria-label="Stop color"
-					value={typeof s.color === 'string' ? s.color : JSON.stringify(s.color)}
-					onchange={(e) => writeHex(e.currentTarget.value, sp)}
-					onpaste={(e) => pasteHex(e, sp)}
-				/>
-				{#if sc}<span class="alpha" title="Alpha, in percent"><ScrubNumber label="Stop alpha" value={Math.round(sc[3] * 1000) / 10} min={0} max={100} step={1} onchange={(v) => setAlpha(sp, sc, v)} /></span>{/if}
+				{#if channels}
+					<span class="fill"></span>
+				{:else}
+					<input
+						class="hex ox-code"
+						aria-label="Stop color"
+						value={typeof s.color === 'string' ? s.color : JSON.stringify(s.color)}
+						onchange={(e) => writeHex(e.currentTarget.value, sp)}
+						onpaste={(e) => pasteHex(e, sp)}
+					/>
+					{#if sc}<span class="alpha" title="Alpha, in percent"><ScrubNumber label="Stop alpha" value={Math.round(sc[3] * 1000) / 10} min={0} max={100} step={1} onchange={(v) => setAlpha(sp, sc, v)} /></span>{/if}
+				{/if}
+				<button
+					class="icon fx"
+					class:on={channels}
+					aria-label="Molang channels"
+					aria-pressed={channels}
+					title={channels ? 'Use a color for this stop' : 'Write this stop as R, G, B, A Molang'}
+					onclick={() => setStopKind(sp, s.color, !channels)}>ƒ</button
+				>
 				<button class="icon" aria-label="Remove stop" onclick={() => removeStop(s.rawKey)}>×</button>
 			</div>
+			{#if channels}
+				{#each ['R', 'G', 'B', 'A'] as ch, i (ch)}
+					{@const p = joinPath(sp, i)}
+					<div class="axis stopch">
+						<span class="tag" aria-hidden="true">{ch}</span>
+						<MolangInput {session} path={p} label="Stop {s.rawKey} {ch}" placeholder="1" context={molangContextFor(session, p, undefined, 1)} onfocus={() => onfocus?.(p)} />
+					</div>
+				{/each}
+			{/if}
 		{/each}
 		<div class="gactions">
 			<button class="link" onclick={addStop}>Add stop</button>
@@ -341,6 +379,15 @@
 	.icon:hover {
 		background: var(--ox-hover);
 		color: var(--ox-frost);
+	}
+	.fill {
+		flex: 1;
+	}
+	.icon.on {
+		color: var(--ox-lox);
+	}
+	.stopch {
+		padding-left: 52px;
 	}
 	.gactions {
 		display: flex;

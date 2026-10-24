@@ -1,5 +1,71 @@
 # Changelog
 
+## Oxygen 0.3.0
+
+### Added
+
+- Right-click menus: the viewport (inspect what's under the pointer, play, captures, helpers), tabs (close
+  others, to the right, saved, all), the Outliner, a component's header or a field in the Inspector (copy,
+  paste, reset, its graph), an input in the Context panel (set, clear, pin, find uses) and a problem.
+- Middle-click a tab to close it.
+- Screenshots, GIFs and videos (MP4, or WebM where the browser can't make MP4) of the viewport from its menu or
+  the Preview menu, at a size of your choosing (Settings › Viewport › Screenshots and recordings). Recordings
+  play the effect at a steady frame rate, from now or from the start, until it ends (or for a length you set).
+  Screenshots go on the clipboard and leave out the background by default. The desktop app keeps captures in
+  Pictures/Oxygen and puts a GIF or video on the clipboard as a file; the web app downloads them; VS Code asks
+  where. Recordings can move the camera (orbit, sway, push in, pull back, rise, spiral), and every capture has
+  a small Oxygen mark in the corner, which Settings can turn off.
+  <br><img src="https://github.com/dev-hydrogen/oxygen/raw/main/docs/media/0.3.0/recording.gif" width="360" alt="Aurora, recorded with the orbit camera">
+- Move the stand-in entity, its locators, its path's points and blocks right in the viewport: click (blocks:
+  right-click › *Move*), then drag the handles or nudge with the arrow keys and Page Up / Page Down. The entity
+  has a place to stand (*Stands at* in the Scene panel); a path goes round it.
+  <br><img src="https://github.com/dev-hydrogen/oxygen/raw/main/docs/media/0.3.0/move.png" width="420" alt="Move handles on the stand-in entity">
+- Turn the entity the same way (right-click › *Turn the entity*, or R while moving it): a ring, or the arrow keys.
+- Move and turn the effect's own emitter where it isn't on the entity, and the scene's other effects: right-click
+  the emitter › *Move* or *Turn*, or set *Spawns at* and *Turned* in the Scene panel. The game can't turn an
+  emitter /particle spawns; the turn is for previewing local-space motion.
+- The Texture panel's texture path can be edited, and its grid takes any size.
+- Right-click menus in Molang and number fields: cut, copy, paste and select all, then the field's own items. The
+  desktop app has the usual edit menu in every other text field too.
+- The Debug panel can change values: drag or type a particle's age, lifetime, position, velocity or rotation, or
+  an emitter's variables and the temps, and the preview carries on from there.
+- *Fill unset with* takes a number of your own, for variables and for queries; dragging it changes everything it
+  filled together.
+- A gradient stop can be written as R, G, B, A Molang in the Inspector (the *ƒ* button on the stop), like
+  `"0.52": ["v.red1", "v.green1", "v.blue1", "v.alpha1"]`. The preview already ran such stops; the Inspector only
+  offered a hex code for them.
+- Import a picture as the effect's texture without a resource pack: *Import image…* in the Texture panel, *File ›
+  Import texture image…*, or drop it on the Texture panel. It stands in for the texture path (an effect on a
+  vanilla texture gets `textures/particle/<file name>`), and Oxygen keeps it for next time.
+- The Game menu (desktop) chooses where packs deploy: any Minecraft install it found, or *Custom paths…*, where
+  the resource pack folder, the behavior pack folder (Oxygen Link) and the content log are each set by hand, for
+  Bedrock on Linux and macOS launchers or other setups Oxygen doesn't find. The choice is kept. The MCP server's
+  `game_deploy` takes a folder path as `install` to copy the pack straight into.
+- Settings › Viewport › Helper limits: how many particles get facing axes and velocity arrows, and how many
+  emitters get markers and shapes.
+
+### Changed
+
+- The scene (entity, blocks, emitter place, other effects) is kept in the file by default, once you change it, so
+  moving and turning things in the viewport, and every other scene change, undoes and redoes with Ctrl+Z / Ctrl+Y
+  (in VS Code too). A drag is one step. Turn *Keep in file* off in the Scene panel to leave the file alone.
+- The Debug panel's *Its turn* says which values the particle set and which it only read (from whatever ran
+  before it in that pass), for its update and its render.
+- Facing axes and velocity arrows stay on the same particles while they live, instead of jumping between them,
+  and go on many more of them (500 and 2,000 to begin with, from 64 and 256).
+- Number boxes apply while you drag them, not when you let go. Scenario queries and pinned variables change the
+  running preview without starting it over, and a locator's place and turn follow at once.
+
+### Fixed
+
+- Clicking between fields in the Inspector could select text from the click onwards: a graph appearing, or values
+  shown in the field changing, moved the text under a held button. They now wait for the release.
+- An effect on the entity that doesn't follow it (bind_to_actor: false) started where the entity stood before
+  it was last moved, not where it stands: the entity took its new place a frame late.
+- The desktop app crashed once the game's content log passed 2 GB (a world whose packs log errors every frame
+  gets there in a few hours): it read the whole file each time it grew. It now reads only the new lines, and the
+  MCP server's `game_log` reads at most the newest 32 MB.
+
 ## Oxygen 0.2.2
 
 ### Added

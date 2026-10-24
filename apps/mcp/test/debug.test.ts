@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ParticleWorld } from 'wintersky';
 import { compileIn, evaluateInEmitter, runIsolated, watchField } from '../src/debug/evaluate';
-import { encodeGif } from '../src/debug/gif';
+import { encodeGif } from '@oxygen/ui/lib/gif';
 import { analyzeMolang, evaluateStandalone } from '../src/molang';
 
 const DT = 1 / 60;
@@ -111,12 +111,15 @@ describe('standalone Molang', () => {
 });
 
 /** Just enough of a GIF decoder to check the encoder: the global palette and each frame's pixel indices */
-function decodeGif(bytes: Uint8Array): { width: number; height: number; palette: Uint8Array; frames: Uint8Array[]; delays: number[] } {
+/** A GIF's frames as palette indices, with each frame's palette (its own, or the global one) */
+function decodeGif(bytes: Uint8Array): { width: number; height: number; palettes: Uint8Array[]; frames: Uint8Array[]; delays: number[] } {
 	const u16 = (o: number) => bytes[o] | (bytes[o + 1] << 8);
 	expect(String.fromCharCode(...bytes.subarray(0, 6))).toBe('GIF89a');
 	const width = u16(6), height = u16(8);
-	const palette = bytes.slice(13, 13 + 768);
-	let p = 13 + 768;
+	const table = (flags: number) => 3 * (1 << ((flags & 7) + 1));
+	const global = bytes[10] & 0x80 ? bytes.slice(13, 13 + table(bytes[10])) : null;
+	let p = 13 + (global ? global.length : 0);
+	const palettes: Uint8Array[] = [];
 	const frames: Uint8Array[] = [];
 	const delays: number[] = [];
 	while (bytes[p] !== 0x3b) {
@@ -128,7 +131,12 @@ function decodeGif(bytes: Uint8Array): { width: number; height: number; palette:
 			continue;
 		}
 		expect(bytes[p]).toBe(0x2c);
+		const flags = bytes[p + 9];
 		p += 10;
+		if (flags & 0x80) {
+			palettes.push(bytes.slice(p, p + table(flags)));
+			p += table(flags);
+		} else palettes.push(global!);
 		const min = bytes[p++];
 		const data: number[] = [];
 		while (bytes[p]) {
@@ -165,11 +173,11 @@ function decodeGif(bytes: Uint8Array): { width: number; height: number; palette:
 		}
 		frames.push(Uint8Array.from(out));
 	}
-	return { width, height, palette, frames, delays };
+	return { width, height, palettes, frames, delays };
 }
 
 describe('GIF encoding', () => {
-	it('round-trips frames through one palette, with the delays asked for', () => {
+	it('round-trips frames through their palettes, with the delays asked for', () => {
 		const w = 37, h = 23;
 		// more colours than fit a palette at once, as a gradient: every pixel must come back close to its colour
 		const frames = [0, 1, 2].map((f) => {
@@ -186,7 +194,7 @@ describe('GIF encoding', () => {
 			for (let i = 0; i < w * h; i++) {
 				const k = gif.frames[n][i] * 3;
 				for (let c = 0; c < 3; c++) {
-					const d = Math.abs(gif.palette[k + c] - f.data[i * 4 + c]);
+					const d = Math.abs(gif.palettes[n][k + c] - f.data[i * 4 + c]);
 					total += d;
 					worst = Math.max(worst, d);
 				}
@@ -207,6 +215,31 @@ describe('GIF encoding', () => {
 		const data = new Uint8Array(64 * 4);
 		for (let i = 0; i < 64; i++) data.set([...colours[i % 3], 255], i * 4);
 		const gif = decodeGif(encodeGif([{ width: 8, height: 8, data }], [0.1]));
-		for (let i = 0; i < 64; i++) expect([...gif.palette.subarray(gif.frames[0][i] * 3, gif.frames[0][i] * 3 + 3)]).toEqual(colours[i % 3]);
+		// the dither's nudge is smaller than the gap between them, and each comes back within a 6-bit step
+		for (let i = 0; i < 64; i++) [...gif.palettes[0].subarray(gif.frames[0][i] * 3, gif.frames[0][i] * 3 + 3)].forEach((c, k) => expect(Math.abs(c - colours[i % 3][k])).toBeLessThanOrEqual(2));
+	});
+
+	it('leaves out see-through pixels when asked, dithers partly see-through ones, and clears each frame before the next', () => {
+		const data = new Uint8Array(16 * 16 * 4);
+		// left half opaque red, a quarter half see-through green, the rest almost clear
+		for (let i = 0; i < 256; i++) data.set(i % 16 < 8 ? [255, 0, 0, 255] : i % 16 < 12 ? [0, 255, 0, 128] : [0, 0, 255, 4], i * 4);
+		const bytes = encodeGif([{ width: 16, height: 16, data }, { width: 16, height: 16, data }], [0.1, 0.1], { transparent: true });
+		const gif = decodeGif(bytes);
+		let half = 0;
+		for (let i = 0; i < 256; i++) {
+			const at = gif.frames[0][i];
+			if (i % 16 < 8) [...gif.palettes[0].subarray(at * 3, at * 3 + 3)].forEach((c, k) => expect(Math.abs(c - [255, 0, 0][k])).toBeLessThanOrEqual(4));
+			else if (i % 16 < 12) half += at === 255 ? 0 : 1;
+			else expect(at).toBe(255);
+		}
+		// half opaque: half of those pixels show
+		expect(half).toBe(32);
+		// graphic control: disposal 2 (clear), transparency on, index 255
+		let gce = 0;
+		for (let p = 0; p < bytes.length - 7; p++) if (bytes[p] === 0x21 && bytes[p + 1] === 0xf9 && bytes[p + 2] === 4) {
+			expect([bytes[p + 3], bytes[p + 6]]).toEqual([0x09, 255]);
+			gce++;
+		}
+		expect(gce).toBe(2);
 	});
 });

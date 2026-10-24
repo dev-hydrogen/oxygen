@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { Workspace } from '../../state/workspace.svelte';
-	import { closeEffect, save } from '../../lib/actions';
+	import { closeEffect, closeEffects, copyShareLink, save } from '../../lib/actions';
+	import { openContextMenu, type MenuItem } from '../../lib/context-menu.svelte';
+	import type { EffectSession } from '../../state/session.svelte';
 	import GameMenu from './GameMenu.svelte';
 	import MenuBar from './MenuBar.svelte';
 	import logoDark from '../../assets/logo-dark.png?inline';
@@ -12,6 +14,57 @@
 	}
 
 	let { workspace, panels }: Props = $props();
+
+	/** right-click on a tab */
+	function tabMenu(s: EffectSession): MenuItem[] {
+		const all = workspace.sessions;
+		const i = all.indexOf(s);
+		const k = (id: string) => workspace.keymap.label(id);
+		const others = all.filter((x) => x !== s).map((x) => x.id);
+		const right = all.slice(i + 1).map((x) => x.id);
+		const saved = all.filter((x) => !x.dirty).map((x) => x.id);
+		return [
+			{ label: 'Close', keys: k('file.close'), run: () => closeEffect(workspace, s.id) },
+			{ label: 'Close others', disabled: !others.length, run: () => closeEffects(workspace, others) },
+			{ label: 'Close to the right', disabled: !right.length, run: () => closeEffects(workspace, right) },
+			{ label: 'Close saved', disabled: !saved.length, title: 'Close every effect without unsaved changes', run: () => closeEffects(workspace, saved) },
+			{ label: 'Close all', run: () => closeEffects(workspace, all.map((x) => x.id)) },
+			{ separator: true },
+			{
+				label: 'Save',
+				keys: k('file.save'),
+				run: () => {
+					workspace.activeId = s.id;
+					save(workspace);
+				},
+			},
+			...(workspace.host.saveAs || workspace.host.download
+				? [
+						{
+							label: workspace.host.saveAs ? 'Save as…' : 'Download a copy',
+							run: () => {
+								workspace.activeId = s.id;
+								save(workspace, true);
+							},
+						},
+					]
+				: []),
+			...(workspace.host.kind === 'web'
+				? [
+						{
+							label: 'Copy share link',
+							run: () => {
+								workspace.activeId = s.id;
+								void copyShareLink(workspace);
+							},
+						},
+					]
+				: []),
+			{ separator: true },
+			{ label: 'Copy identifier', title: s.identifier, run: () => void navigator.clipboard.writeText(s.identifier) },
+			...(s.file.id && !s.file.id.startsWith('example:') ? [{ label: 'Copy path', title: s.file.id, run: () => void navigator.clipboard.writeText(s.file.id!) }] : []),
+		];
+	}
 </script>
 
 <!-- in the desktop app the menu row is the window's title bar: it drags the window, and the window's own buttons
@@ -40,7 +93,21 @@
 	{#if workspace.host.kind !== 'vscode'}
 	<div class="tabs" role="tablist" aria-label="Open effects">
 		{#each workspace.sessions as s (s.id)}
-			<div class="tab" class:active={s.id === workspace.activeId} role="tab" aria-selected={s.id === workspace.activeId}>
+			<!-- middle click closes, as in browsers and editors -->
+			<div
+				class="tab"
+				class:active={s.id === workspace.activeId}
+				role="tab"
+				tabindex="-1"
+				aria-selected={s.id === workspace.activeId}
+				onmousedown={(e) => e.button === 1 && e.preventDefault()}
+				onauxclick={(e) => {
+					if (e.button !== 1) return;
+					e.preventDefault();
+					closeEffect(workspace, s.id);
+				}}
+				oncontextmenu={(e) => openContextMenu(e, tabMenu(s))}
+			>
 				<button class="tab-name" onclick={() => (workspace.activeId = s.id)} title={s.file.name}>{s.file.name}</button>
 				{#if s.dirty}<span class="dirty" aria-label="unsaved changes"></span>{/if}
 				<button class="tab-close" aria-label="Close {s.file.name}" onclick={() => closeEffect(workspace, s.id)}>

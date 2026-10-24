@@ -117,6 +117,22 @@ export async function writePackFile(webview: vscode.Webview, pack: PackIndex, fi
 	void webview.postMessage({ type: 'reply', id, value: ok } satisfies ToWebview);
 }
 
+/** Ask where to keep a screenshot or GIF (next to the effect to start with) and write it there */
+export async function saveCapture(webview: vscode.Webview, file: vscode.Uri, id: number, name: string, bytes: Uint8Array): Promise<void> {
+	let path: string | null = null;
+	try {
+		const ext = name.split('.').pop() ?? 'png';
+		const target = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.joinPath(file, '..', name), filters: { [ext === 'gif' ? 'GIF' : ext === 'mp4' ? 'MP4 video' : ext === 'webm' ? 'WebM video' : 'PNG']: [ext] } });
+		if (target) {
+			await vscode.workspace.fs.writeFile(target, bytes);
+			path = target.fsPath;
+		}
+	} catch {
+		path = null;
+	}
+	void webview.postMessage({ type: 'reply', id, value: path } satisfies ToWebview);
+}
+
 export function localRoots(extensionUri: vscode.Uri): vscode.Uri[] {
 	return [vscode.Uri.joinPath(extensionUri, 'dist'), ...(vscode.workspace.workspaceFolders ?? []).map((f) => f.uri)];
 }

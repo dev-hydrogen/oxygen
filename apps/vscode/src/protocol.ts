@@ -33,4 +33,6 @@ export type ToExtension =
 	/** open a bundled example in an editor of its own */
 	| { type: 'openExample'; name: string }
 	| { type: 'writeText'; id: number; path: string; text: string }
-	| { type: 'writeTexture'; id: number; path: string; pngBase64: string };
+	| { type: 'writeTexture'; id: number; path: string; pngBase64: string }
+	/** a screenshot or GIF of the viewport: ask where to keep it; the reply is its path, or null */
+	| { type: 'saveCapture'; id: number; name: string; base64: string };

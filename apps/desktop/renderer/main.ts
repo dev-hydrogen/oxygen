@@ -1,4 +1,4 @@
-import { mountOxygen, type FileRef, type Host } from '@oxygen/ui';
+import { mountOxygen, pickTexture, type FileRef, type Host } from '@oxygen/ui';
 import type { DesktopApi, DesktopFile } from '../src/api';
 
 /** Oxygen in Electron: native files, pack folders, outside-change sync and the game link */
@@ -39,8 +39,17 @@ const host: Host = {
 	async examples() {
 		return (await desk.examples()).map((e) => ({ name: e.name, load: async () => e.text }));
 	},
+	async pickImage() {
+		const f = await desk.pickImage();
+		if (!f) return null;
+		const bytes = Uint8Array.from(atob(f.base64), (c) => c.charCodeAt(0));
+		const ext = f.name.split('.').pop()?.toLowerCase() ?? 'png';
+		return new File([bytes], f.name, { type: `image/${ext === 'jpg' ? 'jpeg' : ext}` });
+	},
 	resolveTexture: (texture, file) => desk.readTexture(file.id, texture),
 	saveTexture: async (texture, file, png) => desk.saveTexture(file.id, texture, await toBase64(png)),
+	saveCapture: async (name, data) => desk.saveCapture(name, await toBase64(data)),
+	copyFile: (path) => desk.copyFile(path),
 	findEffect: (identifier) => desk.findEffect(app.workspace.active?.file.id ?? null, identifier),
 	parentInputs: (identifier, file) => desk.parentInputs(file.id, identifier),
 	async openEffect(identifier) {
@@ -87,6 +96,9 @@ const host: Host = {
 		status: () => desk.gameStatus(),
 		onStatus: (cb) => statusListeners.push(cb),
 		deploy: (file) => desk.deploy(file.id),
+		setDeployTarget: (choice) => desk.setDeployTarget(choice),
+		pickPath: (kind, current) => desk.pickDeployPath(kind, current),
+		suggestPaths: (resource) => desk.suggestDeployPaths(resource),
 		spawn: (identifier, variables, offset) => desk.spawn(identifier, variables, offset),
 		reload: () => desk.command('reload all'),
 	},
@@ -114,6 +126,7 @@ desk.onMenu((cmd) => {
 	else if (cmd === 'save') void w.save();
 	else if (cmd === 'palette') w.paletteOpen = true;
 	else if (cmd === 'openPack') void w.openPack();
+	else if (cmd === 'importTexture') void pickTexture(w);
 	else if (cmd === 'settings') w.openSettings();
 	else if (cmd === 'about') w.openAbout();
 });

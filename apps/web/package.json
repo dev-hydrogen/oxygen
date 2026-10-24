@@ -1,6 +1,6 @@
 {
 	"name": "@oxygen/web",
-	"version": "0.2.2",
+	"version": "0.3.0",
 	"private": true,
 	"type": "module",
 	"description": "Oxygen in the browser",

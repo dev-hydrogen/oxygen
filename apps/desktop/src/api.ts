@@ -11,6 +11,15 @@ export interface DesktopGameStatus {
 	/** why the game link isn't listening (every port taken, …) */
 	error?: string | null;
 	installs: string[];
+	/** where Deploy copies packs: a found install, or paths set in the Game menu */
+	target: { name: string; custom: boolean; paths: DesktopDeployPaths } | null;
+}
+
+/** where packs are copied and the log is read (null: nowhere) */
+export interface DesktopDeployPaths {
+	resource: string;
+	behavior: string | null;
+	logs: string | null;
 }
 
 export interface DesktopLogEntry {
@@ -37,8 +46,14 @@ export interface DesktopApi {
 	/** Write to `path`; with no path, ask where. Resolves with the file written, or null when cancelled. */
 	save(path: string | null, name: string, text: string): Promise<{ path: string; name: string } | null>;
 	openPack(): Promise<string | null>;
+	/** ask for a picture file (Import texture image); null when cancelled */
+	pickImage(): Promise<{ name: string; base64: string } | null>;
 	readTexture(file: string | null, texture: string): Promise<string | null>;
 	saveTexture(file: string | null, texture: string, pngBase64: string): Promise<boolean>;
+	/** keep a screenshot or GIF in Pictures/Oxygen; resolves with its path */
+	saveCapture(name: string, base64: string): Promise<string | null>;
+	/** put a file on the clipboard as a file (pastes into chats and folders) */
+	copyFile(path: string): Promise<boolean>;
 	findEffect(file: string | null, identifier: string): Promise<string | null>;
 	/** the pack file defining `identifier` (next to `file`), read for opening */
 	openEffect(file: string | null, identifier: string): Promise<DesktopFile | null>;
@@ -75,6 +90,12 @@ export interface DesktopApi {
 	gameStatus(): Promise<DesktopGameStatus>;
 	onGameStatus(cb: (s: DesktopGameStatus) => void): void;
 	deploy(file: string | null): Promise<string>;
+	/** deploy to a found install, or to paths set by hand; kept in settings.json */
+	setDeployTarget(choice: { install: string } | { paths: DesktopDeployPaths }): Promise<DesktopGameStatus>;
+	/** ask for one of the deploy paths (a folder; the log may be a file on macOS) */
+	pickDeployPath(kind: keyof DesktopDeployPaths, current: string | null): Promise<string | null>;
+	/** the behavior pack folder and content log a resource pack folder suggests */
+	suggestDeployPaths(resource: string): Promise<DesktopDeployPaths>;
 	command(commandLine: string): Promise<string>;
 	/** spawn in front of the player: /particle, or Oxygen Link with a variable map */
 	spawn(identifier: string, variables?: Record<string, number | number[]>, offset?: [number, number, number]): Promise<string>;

@@ -2,7 +2,7 @@
 	"name": "oxygen-particle-editor",
 	"displayName": "Oxygen Particle Editor",
 	"description": "Bedrock particle IDE: an editor that shows what the game actually renders, plus Molang language features for particle files",
-	"version": "0.2.2",
+	"version": "0.3.0",
 	"private": true,
 	"publisher": "hydrogen",
 	"icon": "media/icon.png",

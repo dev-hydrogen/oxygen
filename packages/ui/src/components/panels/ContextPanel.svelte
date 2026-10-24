@@ -142,6 +142,22 @@
 		update((s) => ({ ...s, variables: { ...(s.variables ?? {}), ...Object.fromEntries(missing.map((n) => [n, value])) } }), 'Fill scenario variables');
 	}
 
+	/**
+	 * The fill box: a number of your own for every unset variable. Dragging or typing on changes the ones it
+	 * filled as well, as long as they still hold what it gave them (one undo step while it's dragged).
+	 */
+	let fillVarValue = $state<number | null>(null);
+	let filledVars: string[] = [];
+	function fillUnsetWith(n: number | null) {
+		const before = fillVarValue;
+		fillVarValue = n;
+		if (n === null) return;
+		const targets = [...new Set([...inputNames.filter((k) => variableInput(k) === undefined), ...filledVars.filter((k) => before !== null && variableInput(k) === before)])];
+		filledVars = targets;
+		if (!targets.length) return;
+		update((s) => ({ ...s, variables: { ...(s.variables ?? {}), ...Object.fromEntries(targets.map((k) => [k, n])) } }), 'Fill scenario variables');
+	}
+
 	/** variables holding a plain number, which the "all numbers" controls change together */
 	const numeric = $derived(inputNames.filter((n) => typeof variableInput(n) === 'number'));
 	let allValue = $state<number | null>(null);
@@ -238,6 +254,19 @@
 		update((s) => ({ ...s, queries: { ...(s.queries ?? {}), ...Object.fromEntries(keys.map((k) => [k, value])) } }), 'Fill scenario queries');
 	}
 
+	/** The fill box for queries, as for variables: it keeps changing the ones it filled */
+	let fillQueryValue = $state<number | null>(null);
+	let filledQueries = $state.raw<string[]>([]);
+	function fillUnsuppliedWith(n: number | null) {
+		const before = fillQueryValue;
+		fillQueryValue = n;
+		if (n === null) return;
+		const targets = [...new Set([...unsuppliedQueries, ...filledQueries.filter((k) => before !== null && active?.queries?.[k] === before)])];
+		filledQueries = targets;
+		if (!targets.length) return;
+		update((s) => ({ ...s, queries: { ...(s.queries ?? {}), ...Object.fromEntries(targets.map((k) => [k, n])) } }), 'Fill scenario queries');
+	}
+
 	function clearQueries() {
 		update((s) => ({ ...s, queries: undefined }), 'Clear scenario queries');
 	}
@@ -310,6 +339,9 @@
 					<button class="btn ox-num" title="Every variable without a value gets 0" onclick={() => fillUnset(0)}>0</button>
 					<button class="btn ox-num" title="Every variable without a value gets 1" onclick={() => fillUnset(1)}>1</button>
 					<button class="btn ox-code" title="Every variable without a value gets an empty string" onclick={() => fillUnset('')}>''</button>
+					<span class="fillset" title="Every variable without a value gets this number. Drag it, or keep typing, to change the ones it filled together.">
+						<ScrubNumber label="Fill unset variables with" value={fillVarValue} allowEmpty placeholder="number…" onchange={fillUnsetWith} />
+					</span>
 					<button class="btn" disabled={!active?.variables} title="Remove every value set here" onclick={clearVariables}>Clear</button>
 				{/if}
 			</div>
@@ -323,6 +355,10 @@
 					live={liveVar(name)}
 					pinned={isPinned(name)}
 					onpin={(on) => setPinned(name, on)}
+					extraMenu={() => [
+						{ label: 'Find uses', run: () => { session.programFilter = name; session.referencesRequest = { name: canon(name), at: Date.now() }; workspace.show('expression'); } },
+						...(isContext(name) ? [] : [{ label: 'Rename everywhere…', run: () => void (session.renameRequest = canon(name)) }]),
+					]}
 					onchange={(v) => setVariable(name, v)}
 				/>
 			{:else}
@@ -365,11 +401,14 @@
 				<h3>Queries</h3>
 				<span class="dim ox-num">{queries.length + extraQueries.length}</span>
 				<span class="spacer"></span>
-				{#if unsuppliedQueries.length}
-					<span class="dim">Fill {unsuppliedQueries.length} unsupplied with</span>
-					<button class="btn ox-num" title="Every query nothing supplies gets 0" onclick={() => fillUnsupplied(0)}>0</button>
-					<button class="btn ox-num" title="Every query nothing supplies gets 1" onclick={() => fillUnsupplied(1)}>1</button>
-					<button class="btn ox-code" title="Every query nothing supplies gets an empty string" onclick={() => fillUnsupplied('')}>''</button>
+				{#if unsuppliedQueries.length || filledQueries.length}
+					<span class="dim">Fill {unsuppliedQueries.length ? `${unsuppliedQueries.length} unsupplied` : 'unsupplied'} with</span>
+					<button class="btn ox-num" disabled={!unsuppliedQueries.length} title="Every query nothing supplies gets 0" onclick={() => fillUnsupplied(0)}>0</button>
+					<button class="btn ox-num" disabled={!unsuppliedQueries.length} title="Every query nothing supplies gets 1" onclick={() => fillUnsupplied(1)}>1</button>
+					<button class="btn ox-code" disabled={!unsuppliedQueries.length} title="Every query nothing supplies gets an empty string" onclick={() => fillUnsupplied('')}>''</button>
+					<span class="fillset" title="Every query nothing supplies gets this number. Drag it, or keep typing, to change the ones it filled together.">
+						<ScrubNumber label="Fill unsupplied queries with" value={fillQueryValue} allowEmpty placeholder="number…" onchange={fillUnsuppliedWith} />
+					</span>
 				{/if}
 				{#if queries.length || extraQueries.length}
 					<button class="btn" disabled={!active?.queries} title="Remove every query value set here" onclick={clearQueries}>Clear</button>
@@ -477,8 +516,9 @@
 	}
 	.head {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 8px;
+		gap: 6px 8px;
 		padding: 8px 10px 4px;
 	}
 	h3 {
@@ -516,6 +556,10 @@
 	}
 	.allset {
 		width: 90px;
+	}
+	.fillset {
+		width: 78px;
+		flex: none;
 	}
 	.btn {
 		border: 1px solid var(--ox-rule-strong);

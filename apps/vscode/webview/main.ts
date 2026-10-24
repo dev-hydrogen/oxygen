@@ -61,6 +61,12 @@ const host: Host = {
 		for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
 		return (await ask((id) => ({ type: 'writeTexture', id, path: texture, pngBase64: btoa(s) }))) === true;
 	},
+	saveCapture: async (name, data) => {
+		const bytes = new Uint8Array(await data.arrayBuffer());
+		let s = '';
+		for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+		return ((await ask((id) => ({ type: 'saveCapture', id, name, base64: btoa(s) }))) as string | null) ?? null;
+	},
 	async loadSettings() {
 		return settings;
 	},

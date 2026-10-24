@@ -29,6 +29,7 @@
 	import ShortcutsDialog from './shell/ShortcutsDialog.svelte';
 	import SettingsDialog from './shell/SettingsDialog.svelte';
 	import AboutDialog from './shell/AboutDialog.svelte';
+	import ContextMenu from './shell/ContextMenu.svelte';
 
 	interface Props {
 		workspace: Workspace;
@@ -297,7 +298,7 @@
 	// the desktop app's native menu shows (and answers to) the same keys
 	$effect(() => {
 		const km = workspace.keymap;
-		const menu: Record<string, string> = { new: 'file.new', open: 'file.open', openPack: 'file.openPack', save: 'file.save', palette: 'app.commands', settings: 'app.settings', about: 'app.about' };
+		const menu: Record<string, string> = { new: 'file.new', open: 'file.open', openPack: 'file.openPack', importTexture: 'file.importTexture', save: 'file.save', palette: 'app.commands', settings: 'app.settings', about: 'app.about' };
 		workspace.host.setMenuKeys?.(Object.fromEntries(Object.entries(menu).map(([cmd, id]) => [cmd, km.keys(id).map(toAccelerator).find((a) => a) ?? null])));
 	});
 	const codeSize = $derived(workspace.prefs.codeSize);
@@ -315,6 +316,7 @@
 	<ShortcutsDialog {workspace} />
 	<SettingsDialog {workspace} />
 	<AboutDialog {workspace} />
+	<ContextMenu />
 </div>
 
 <style>

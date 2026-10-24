@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { PackIndex } from './pack';
 import type { TextEdit, ToExtension, ToWebview } from './protocol';
-import { aboutVsCode, answerRequest, localRoots, webviewHtml, writePackFile } from './webview';
+import { aboutVsCode, answerRequest, localRoots, saveCapture, webviewHtml, writePackFile } from './webview';
 
 /**
  * Oxygen as a custom text editor. The VS Code TextDocument stays the source of truth:
@@ -109,6 +109,9 @@ export class OxygenEditorProvider implements vscode.CustomTextEditorProvider {
 					break;
 				case 'writeTexture':
 					void writePackFile(webview, this.pack, document.uri, msg.id, `${msg.path.replace(/\.(png|tga)$/i, '')}.png`, Uint8Array.from(atob(msg.pngBase64), (c) => c.charCodeAt(0)));
+					break;
+				case 'saveCapture':
+					void saveCapture(webview, document.uri, msg.id, msg.name, Uint8Array.from(atob(msg.base64), (c) => c.charCodeAt(0)));
 					break;
 			}
 		});

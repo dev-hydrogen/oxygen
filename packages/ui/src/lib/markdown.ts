@@ -1,6 +1,7 @@
 /**
  * Just enough Markdown for the changelog in About › What's new: headings, paragraphs, lists (with wrapped and
- * nested lines), and inline code, bold and links. Parsed into data, so it renders without HTML strings.
+ * nested lines), and inline code, bold and links. Parsed into data, so it renders without HTML strings; lines of
+ * only HTML (the pictures GitHub shows) are left out.
  */
 
 export type Inline = { kind: 'text' | 'code' | 'bold'; text: string } | { kind: 'link'; text: string; href: string };
@@ -34,6 +35,8 @@ export function parseMarkdown(source: string): Block[] {
 	};
 	for (const raw of source.split(/\r?\n/)) {
 		const line = raw.trimEnd();
+		// a line of nothing but HTML (the changelog's pictures, for GitHub) stays out: the app shows the text
+		if (/^\s*(<[^>]+>\s*)+$/.test(line)) continue;
 		const heading = /^(#{1,6})\s+(.*)$/.exec(line);
 		const item = /^\s*[-*]\s+(.*)$/.exec(line);
 		if (!line.trim()) {

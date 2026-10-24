@@ -4,6 +4,8 @@
 	import { SPAWN_MODES } from '../../state/session.svelte';
 	import { LAYOUTS, type Workspace } from '../../state/workspace.svelte';
 	import { closeEffect, copyShareLink, openExample, save } from '../../lib/actions';
+	import { pickTexture } from '../../lib/import-texture';
+	import { CAMERA_MOVES } from '../../lib/camera-moves';
 	import { REPO } from '../../lib/about';
 
 	/** File / Edit / View / Preview / Examples / Help, like other editors: every panel can be brought back from View */
@@ -43,6 +45,7 @@
 		if (!inVsCode) items.push({ label: 'New effect', keys: k('file.new'), run: () => void workspace.newEffect() });
 		if (host.openFiles) items.push({ label: 'Open files…', keys: k('file.open'), run: () => workspace.openFiles() });
 		if (host.openPack) items.push({ label: 'Open resource pack folder…', keys: k('file.openPack'), run: () => workspace.openPack() });
+		items.push({ label: 'Import texture image…', keys: k('file.importTexture'), disabled: !s, title: 'A picture file as the effect’s texture, without a resource pack', run: () => void pickTexture(workspace) });
 		if (host.recentFiles && recent.length) {
 			items.push({ separator: true }, { heading: 'Recent' });
 			for (const f of recent.slice(0, 6)) items.push({ label: f.name, title: f.where ?? f.id ?? '', run: () => workspace.openKnown(f) });
@@ -102,6 +105,15 @@
 			{ label: 'Restart', keys: k('preview.restart'), run: () => s.restart() },
 			{ label: 'Repeat', checked: s.loopPreview, keys: k('preview.repeat'), title: 'Looping effects loop seamlessly; others play again when they end', run: () => void (s.loopPreview = !s.loopPreview) },
 			{ label: 'Frame the particles', keys: k('preview.frame'), run: () => void (workspace.frameRequest = Date.now()) },
+			{ separator: true },
+			{ label: 'Copy a screenshot', keys: k('preview.copyScreenshot'), run: () => void (workspace.captureRequest = { kind: 'copy', at: Date.now() }) },
+			{ label: 'Save a screenshot', keys: k('preview.saveScreenshot'), run: () => void (workspace.captureRequest = { kind: 'save', at: Date.now() }) },
+			{ label: 'Record a GIF from here', keys: k('preview.recordGif'), run: () => void (workspace.captureRequest = { kind: 'gif', at: Date.now() }) },
+			{ label: 'Record a GIF from the start', keys: k('preview.recordGifStart'), run: () => void (workspace.captureRequest = { kind: 'gifStart', at: Date.now() }) },
+			{ label: 'Record a video from here', keys: k('preview.recordVideo'), run: () => void (workspace.captureRequest = { kind: 'video', at: Date.now() }) },
+			{ label: 'Record a video from the start', keys: k('preview.recordVideoStart'), run: () => void (workspace.captureRequest = { kind: 'videoStart', at: Date.now() }) },
+			{ heading: 'Camera while recording' },
+			...CAMERA_MOVES.map((m): Item => ({ label: m.label, title: m.help, checked: workspace.prefs.recordCamera === m.id, run: () => void (workspace.prefs.recordCamera = m.id) })),
 			{ separator: true },
 			{ label: 'Trajectory paths', checked: s.showPaths, keys: k('preview.paths'), run: () => void (s.showPaths = !s.showPaths) },
 			{ label: 'Facing axes', checked: s.showFacing, keys: k('preview.facing'), run: () => void (s.showFacing = !s.showFacing) },

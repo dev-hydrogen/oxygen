@@ -1,8 +1,9 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ENTITY_TESTS, RIG_EFFECTS, RIG_KINDS, rigBehaviors, rigClients, rigGeometry, rigProbes, rigTexture } from './entity';
+import { ENTITY_TESTS, placeE32, RIG_EFFECTS, RIG_KINDS, rigBehaviors, rigClients, rigGeometry, rigProbes, rigTexture } from './entity';
 import { MARKERS, TESTS, probeCurves, probeEvents, type Json, type TestCase } from './tests';
+import { SCOPE_TESTS, SLOT_COLOURS, scopeBehaviors, scopeClient, scopeCommands, scopeEffects, scopeGeometry, scopeTexture } from './scope';
 import { testTextureSets, testTextures } from './textures';
 
 export const PACK = {
@@ -165,6 +166,13 @@ export function generate(outDir: string) {
 		all.push(`function oxygen/${test.id}`);
 	});
 	// entity tests: the rig and its effects, one row each after the particle tests
+	{
+		// e32's red flags are coded with each rig's own world position
+		const k = ENTITY_TESTS.findIndex((t) => t.id === 'e32');
+		const test = ENTITY_TESTS[k];
+		const z = rowZ(TESTS.length + k);
+		placeE32(test.probes.map((_, j) => [j * (test.spacing ?? LAYOUT.probeSpacing), LAYOUT.floorY + 1, z]));
+	}
 	for (const [name, fx] of Object.entries(RIG_EFFECTS)) {
 		const json = structuredClone(fx) as Json;
 		json.particle_effect.description.identifier = `oxygen:rig_${name}`;
@@ -201,6 +209,48 @@ export function generate(outDir: string) {
 		writeFileSync(join(bp, 'functions', 'oxygen', `${test.id}_cam.mcfunction`), cameraFor(test, index, 'front') + '\n');
 		for (const view of test.views ?? []) writeFileSync(join(bp, 'functions', 'oxygen', `${test.id}_${view}.mcfunction`), cameraFor(test, index, view) + '\n');
 	});
+	// temp and context scope tests (s01…): their own entities, one row each after the entity tests
+	for (const [name, fx] of Object.entries(scopeEffects())) {
+		const json = structuredClone(fx) as Json;
+		json.particle_effect.description.identifier = `oxygen:scope_${name}`;
+		writeJson(join(rp, 'particles', `scope_${name}.json`), json);
+	}
+	const scope = scopeClient();
+	writeJson(join(rp, 'models', 'entity', 'oxygen_scope.geo.json'), scopeGeometry());
+	writeJson(join(rp, 'models', 'entity', 'oxygen_scope_item.geo.json'), scope.attachableGeometry);
+	for (const [kind, e] of Object.entries(scope.entities)) writeJson(join(rp, 'entity', `oxygen_${kind}.entity.json`), e);
+	for (const [k, a] of Object.entries(scope.attachables)) writeJson(join(rp, 'attachables', `oxygen_scope_item_${k}.attachable.json`), a);
+	// animations that try to write c.* (probably a load error) get a file of their own, away from the rest
+	const writesContext = (a: Json) => /\bc\.\w+\s*=[^=]/.test(JSON.stringify(a));
+	const anims = Object.entries(scope.animations.animations as Json);
+	writeJson(join(rp, 'animations', 'oxygen_scope.animation.json'), { ...scope.animations, animations: Object.fromEntries(anims.filter(([, a]) => !writesContext(a))) });
+	writeJson(join(rp, 'animations', 'oxygen_scope_context.animation.json'), { ...scope.animations, animations: Object.fromEntries(anims.filter(([, a]) => writesContext(a))) });
+	writeJson(join(rp, 'animation_controllers', 'oxygen_scope.animation_controllers.json'), scope.controllers);
+	writeJson(join(rp, 'render_controllers', 'oxygen_scope.render_controllers.json'), scope.renderControllers);
+	writeFileSync(join(rp, 'textures', 'entity', 'oxygen_scope.png'), scopeTexture([150, 150, 160]));
+	writeFileSync(join(rp, 'textures', 'entity', 'oxygen_scope_b.png'), scopeTexture([200, 170, 120]));
+	const scopeBp = scopeBehaviors();
+	for (const [kind, e] of Object.entries(scopeBp.entities)) writeJson(join(bp, 'entities', `oxygen_${kind}.json`), e);
+	for (const [k, item] of Object.entries(scopeBp.items)) writeJson(join(bp, 'items', `oxygen_scope_item_${k}.json`), item);
+	writeJson(join(bp, 'animations', 'oxygen_scope_srv.animation.json'), scopeBp.animations);
+	writeJson(join(bp, 'animation_controllers', 'oxygen_scope_srv.animation_controllers.json'), scopeBp.controllers);
+	SCOPE_TESTS.forEach((test, k) => {
+		const index = TESTS.length + ENTITY_TESTS.length + k;
+		const z = rowZ(index);
+		const view = { probes: test.stations, spacing: test.spacing ?? 5 };
+		const fn = [`# ${test.id}: ${test.title}`, cameraFor(view, index, 'front'), ...scopeCommands(test, z, LAYOUT.floorY, MARKERS)];
+		checklist.push(`## ${test.id} — ${test.title}`, '', `**Question:** ${test.question}`, '', `**Engine assumption:** ${test.assumption}`, '', `Wait ${test.wait}s, then screenshot.`, '');
+		test.stations.forEach((st, j) => checklist.push(`- **${st.id}** (${MARKERS[j % MARKERS.length]}): ${st.reads}`));
+		checklist.push('');
+		writeFileSync(join(bp, 'functions', 'oxygen', `${test.id}.mcfunction`), fn.join('\n') + '\n');
+		writeFileSync(join(bp, 'functions', 'oxygen', `${test.id}_cam.mcfunction`), cameraFor(view, index, 'front') + '\n');
+		writeFileSync(join(bp, 'functions', 'oxygen', `${test.id}_frontleft.mcfunction`), cameraFor(view, index, 'frontleft') + '\n');
+	});
+	checklist.push(
+		'Scope tests (s01…): temps are never cleared, so run each one first after loading the world; on a second run a reader may see what the first run wrote.',
+		`Scope reader cube colours by slot: ${SLOT_COLOURS.map((c, i) => `${i + 1} ${c}`).join(', ')}.`,
+		'',
+	);
 	mkdirSync(join(bp, 'functions', 'oxygen'), { recursive: true });
 	writeFileSync(join(bp, 'functions', 'oxygen', 'setup.mcfunction'), setup.join('\n') + '\n');
 	writeFileSync(join(bp, 'functions', 'oxygen', 'all.mcfunction'), all.join('\n') + '\n');
@@ -221,6 +271,23 @@ system.afterEvents.scriptEventReceive.subscribe((event) => {
 		world.getDimension(data.dimension ?? 'overworld').spawnParticle(data.effect, { x, y, z }, vars);
 	} catch (error) {
 		console.warn('oxygen:spawn failed: ' + error);
+	}
+});
+
+// /scriptevent oxygen:at {"after":1,"command":"summon …"}: run a command in the overworld after a delay (scope tests)
+system.afterEvents.scriptEventReceive.subscribe((event) => {
+	if (event.id !== 'oxygen:at') return;
+	try {
+		const m = JSON.parse(event.message);
+		system.runTimeout(() => {
+			try {
+				world.getDimension('overworld').runCommand(m.command);
+			} catch (error) {
+				console.warn('oxygen:at ' + m.command + ' failed: ' + error);
+			}
+		}, Math.round(m.after * 20));
+	} catch (error) {
+		console.warn('oxygen:at failed: ' + error);
 	}
 });
 

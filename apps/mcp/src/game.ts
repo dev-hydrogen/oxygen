@@ -3,7 +3,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { ConnectServer, deployHelper, deployPackDetailed, entriesFor, entryPath, findInstalls, latestContentLog, parseContentLog, particleSpawnCommand, readPack, scriptSpawnCommand, type GameInstall } from '@oxygen/gamelink';
+import { ConnectServer, deployHelper, deployPackDetailed, entriesFor, entryPath, findInstalls, folderInstall, latestContentLog, parseContentLog, particleSpawnCommand, readLogSince, readPack, scriptSpawnCommand, type GameInstall } from '@oxygen/gamelink';
 import { z } from 'zod';
 import { identifierOf, packRoot } from './pack';
 import { data, existing, text, tool } from './util';
@@ -14,6 +14,8 @@ const logMarks = new Map<string, { file: string; size: number }>();
 
 function install(name?: string): GameInstall {
 	const all = findInstalls();
+	// a folder of its own, taken as it is: packs are copied straight into it
+	if (name && /[\\/]/.test(name)) return folderInstall(name, all);
 	if (!all.length) throw new Error('No Minecraft Bedrock install found on this machine (looked for the launcher, Preview and the older Store layouts).');
 	if (!name) return all[0];
 	const hit = all.find((i) => i.name.toLowerCase() === name.toLowerCase());
@@ -67,7 +69,7 @@ export function registerGameTools(server: McpServer): void {
 				"Copy the resource pack around a particle file (the folder with its manifest.json) into the game's development_resource_packs, replacing the previous copy. `helper` also installs Oxygen Link, a small behavior pack that lets game_spawn spawn effects the way the Script API does (with variables). Activate the packs in a world once; afterwards `reload` runs /reload all when connected. Writes into the game's folders.",
 			inputSchema: {
 				path: z.string().describe('A particle file in the pack, or the pack folder'),
-				install: z.string().optional().describe('Which install (see game_status); default the first'),
+				install: z.string().optional().describe('Which install (see game_status), or the path of any folder to copy the pack straight into; default the first install'),
 				helper: z.boolean().optional(),
 				reload: z.boolean().optional(),
 			},
@@ -85,7 +87,10 @@ export function registerGameTools(server: McpServer): void {
 				if (log) logMarks.set(inst.name, { file: log, size: statSync(log).size });
 				const lines = [`Deployed ${pack.name} (${pack.kind} pack) to ${res.target}.`];
 				if (res.addedPbr) lines.push("The deployed copy got the 'pbr' capability so Vibrant Visuals stays available; the pack itself is unchanged.");
-				if (a.helper) lines.push(`Oxygen Link installed at ${deployHelper(inst)}.`);
+				if (a.helper) {
+					const at = deployHelper(inst);
+					lines.push(at ? `Oxygen Link installed at ${at}.` : "Oxygen Link wasn't installed: that folder has no behavior_packs next to it.");
+				}
 				if (a.reload) lines.push(`/reload all: ${JSON.stringify(await command('reload all'))}`);
 				return text(lines.join('\n'));
 			}),
@@ -151,10 +156,10 @@ export function registerGameTools(server: McpServer): void {
 				const inst = install(a.install);
 				const file = latestContentLog(inst);
 				if (!file) throw new Error(`No content log for ${inst.name}. Turn on Settings › Creator › Content Log File in the game.`);
-				const bytes = readFileSync(file);
 				const mark = logMarks.get(inst.name);
-				const from = a.since_deploy !== false && mark?.file === file ? Math.min(mark.size, bytes.length) : 0;
-				let entries = parseContentLog(bytes.subarray(from).toString('utf8'));
+				const from = a.since_deploy !== false && mark?.file === file ? mark.size : 0;
+				// the newest 32 MB at most: logs full of per-frame errors grow past what can be read at once
+				let entries = parseContentLog(readLogSince(file, from, 32 << 20).text);
 				if (a.path) entries = entriesFor(entries, a.path);
 				const shown = entries.slice(-(a.limit ?? 100)).map((e) => ({ time: e.time, level: e.level, category: e.category, file: e.file, path: entryPath(e), expression: e.expression, message: e.message }));
 				return data(`${entries.length} entries in ${file}${from ? ' since the last deploy' : ''}:`, shown);

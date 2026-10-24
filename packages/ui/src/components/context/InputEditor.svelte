@@ -5,6 +5,7 @@
 	import MolangText from '../fields/MolangText.svelte';
 	import { evalKeys, inputKind, SCENE_SOURCES, type InputKind, type InputType } from '../../lib/inputs';
 	import { showNumber } from '../../lib/numbers';
+	import { menu, type MenuItem } from '../../lib/context-menu.svelte';
 
 	interface Props {
 		/** shown name: `v.size`, `q.position(1)` */
@@ -18,6 +19,8 @@
 		live?: Value | undefined;
 		/** how to show it instead, when it isn't one value (a struct query's members) */
 		liveText?: string;
+		/** more for its right-click menu (rename, find uses) */
+		extraMenu?: () => MenuItem[];
 		/** argument lists this query was called with, for filling a table */
 		seenArgs?: string[];
 		onchange: (value: InputValue | undefined) => void;
@@ -26,7 +29,21 @@
 		description?: string;
 	}
 
-	let { name, kind, type, dynamic = false, value, live, liveText, seenArgs = [], onchange, pinned = false, onpin, description }: Props = $props();
+	let { name, kind, type, dynamic = false, value, live, liveText, seenArgs = [], onchange, pinned = false, onpin, description, extraMenu }: Props = $props();
+
+	function inputMenu(): MenuItem[] {
+		const items: MenuItem[] = [];
+		if (type !== 'string') {
+			items.push({ label: 'Set to 0', run: () => onchange(0) }, { label: 'Set to 1', run: () => onchange(1) });
+			if (typeof live === 'number') items.push({ label: `Keep what it reads now (${showNumber(live, 3)})`, run: () => onchange(liveNumber()) });
+		} else items.push({ label: "Set to ''", run: () => onchange('') });
+		items.push({ label: kind === 'query' ? 'Back to live' : 'Clear', disabled: value === undefined, run: () => onchange(undefined) });
+		if (onpin) items.push({ separator: true }, { label: 'Pinned', checked: pinned, disabled: value === undefined, title: 'Write it before every update, which the game never does', run: () => onpin?.(!pinned) });
+		const more = extraMenu?.() ?? [];
+		if (more.length) items.push({ separator: true }, ...more);
+		items.push({ separator: true }, { label: 'Copy the name', run: () => void navigator.clipboard.writeText(name) });
+		return items;
+	}
 
 	const mode = $derived<InputKind | 'none'>(value === undefined ? 'none' : inputKind(value));
 	const MODES = $derived<{ id: InputKind | 'none'; label: string }[]>([
@@ -122,7 +139,7 @@
 	}
 </script>
 
-<div class="input" class:pinned class:set={mode !== 'none'} title={description}>
+<div class="input" class:pinned class:set={mode !== 'none'} title={description} use:menu={inputMenu}>
 	<span class="name ox-code">{name}</span>
 	<select class="mode" aria-label="How the preview supplies {name}" value={mode} onchange={(e) => setMode(e.currentTarget.value as InputKind | 'none')}>
 		{#each MODES as m (m.id)}<option value={m.id}>{m.label}</option>{/each}

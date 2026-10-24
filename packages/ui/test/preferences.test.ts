@@ -78,5 +78,8 @@ describe('the changelog', () => {
 		expect(r[0].title).toMatch(/^Oxygen \d+\.\d+\.\d+/);
 		expect(r.length).toBeGreaterThan(1);
 		expect(parseMarkdown('').length).toBe(0);
+		// the pictures under items are for GitHub: the app's text has none of their HTML
+		expect(JSON.stringify(r[0].blocks)).not.toContain('<img');
+		expect(parseMarkdown('- An item\n  <br><img src="x.png" width="300">\n- Another')).toEqual([{ kind: 'list', items: [[{ kind: 'text', text: 'An item' }], [{ kind: 'text', text: 'Another' }]] }]);
 	});
 });

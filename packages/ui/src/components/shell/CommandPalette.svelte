@@ -5,6 +5,7 @@
 	import { LAYOUTS, type Workspace } from '../../state/workspace.svelte';
 	import { componentPath } from '../../lib/molang-text';
 	import { closeEffect, copyShareLink, save } from '../../lib/actions';
+	import { pickTexture } from '../../lib/import-texture';
 	import { runCommand } from '../../lib/commands';
 	import { MCP_PROMPT } from '../../lib/about';
 
@@ -42,6 +43,7 @@
 		}
 		if (workspace.host.openFiles) list.push({ label: 'Open files…', group: 'File', keys: k('file.open'), run: () => workspace.openFiles() });
 		if (workspace.host.openPack) list.push({ label: 'Open resource pack folder…', group: 'File', keys: k('file.openPack'), run: () => workspace.openPack() });
+		if (workspace.active) list.push({ label: 'Import texture image…', group: 'File', keys: k('file.importTexture'), run: () => void pickTexture(workspace) });
 		for (const [id, p] of Object.entries(panels)) {
 			const shown = workspace.openPanels.includes(id);
 			list.push({ label: `${shown ? 'Hide' : 'Show'} ${p.title}`, group: 'View', keys: k(`view.panel.${id}`), run: () => (shown ? workspace.hide(id) : workspace.show(id)) });

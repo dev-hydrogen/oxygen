@@ -9,6 +9,8 @@
 	import VecInput from '../fields/VecInput.svelte';
 	import Select from '../fields/Select.svelte';
 	import Toggle from '../fields/Toggle.svelte';
+	import { menu, type MenuItem } from '../../lib/context-menu.svelte';
+	import { parse as parseJsonc } from 'jsonc-parser';
 
 	interface Props {
 		session: EffectSession;
@@ -69,11 +71,34 @@
 		);
 	}
 
+	function headerMenu(): MenuItem[] {
+		if (!enabled) return [{ label: `Turn on ${title}`, run: () => setEnabled(true) }];
+		return [
+			{ label: open ? 'Collapse' : 'Expand', run: () => void (open = !open) },
+			{ separator: true },
+			{ label: 'Copy JSON', run: () => void navigator.clipboard.writeText(JSON.stringify(value, null, '\t')) },
+			{
+				label: 'Paste JSON',
+				title: 'Replace its values with JSON from the clipboard',
+				run: async () => {
+					const text = await navigator.clipboard.readText().catch(() => '');
+					const errors: never[] = [];
+					const v = parseJsonc(text, errors, { allowTrailingComma: true });
+					if (errors.length || v === undefined) return;
+					session.doc.set(path, v, `Paste ${component.label}`);
+				},
+			},
+			{ label: 'Reset to its defaults', title: 'Clear every field, so each takes the game’s default', run: () => session.doc.set(path, initialValue(component), `Reset ${component.label}`) },
+			{ separator: true },
+			{ label: `Turn off ${component.label}`, danger: true, title: 'Its values come back when you turn it on', run: () => setEnabled(false) },
+		];
+	}
+
 	const speedIsVector = $derived(component.id === 'minecraft:particle_initial_speed' && Array.isArray(value));
 </script>
 
 <section class="block" class:off={!enabled} aria-label={title}>
-	<header>
+	<header use:menu={headerMenu}>
 		{#if enabled}
 			<button class="chev" aria-expanded={open} aria-label="{open ? 'Collapse' : 'Expand'} {component.label}" onclick={() => (open = !open)}>
 				<svg viewBox="0 0 8 8" class:closed={!open} aria-hidden="true"><path d="M1.5 2.5l2.5 3 2.5-3" fill="none" stroke="currentColor" stroke-width="1.3" /></svg>

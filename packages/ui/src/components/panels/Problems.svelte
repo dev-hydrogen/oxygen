@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Problem } from '@oxygen/effect';
 	import type { Workspace } from '../../state/workspace.svelte';
+	import { menu, type MenuItem } from '../../lib/context-menu.svelte';
 
 	interface Props {
 		workspace: Workspace;
@@ -31,6 +32,15 @@
 		return comp ? comp.replace('minecraft:', '').replace(/_/g, ' ') + (seg.length > 3 ? ` › ${seg.slice(3).join(' ')}` : '') : seg.slice(1).join(' › ') || 'Effect';
 	}
 
+	function problemMenu(p: Problem): MenuItem[] {
+		return [
+			{ label: 'Go to the field', disabled: !p.path, run: () => { if (session) session.selected = p.path || null; workspace.show('inspector'); } },
+			{ separator: true },
+			{ label: 'Copy the message', run: () => void navigator.clipboard.writeText(p.message) },
+			{ label: 'Copy every problem', run: () => void navigator.clipboard.writeText(problems.map((x) => `${x.severity}: ${where(x)}: ${x.message}`).join('\n')) },
+		];
+	}
+
 	const SOURCE: Record<Problem['source'], string> = { molang: 'Molang', effect: 'Effect', schema: 'Schema', json: 'JSON', runtime: 'Preview', game: 'Game' };
 </script>
 
@@ -45,7 +55,7 @@
 	</div>
 	<ul class="list">
 		{#each problems as p, i (i + p.path + p.message)}
-			<li>
+			<li use:menu={() => problemMenu(p)}>
 				<button class="item" class:selected={session?.selected === p.path} onclick={() => session && (session.selected = p.path || null)}>
 					<span class="sev {p.severity}" aria-label={p.severity}></span>
 					<span class="msg">{p.message}</span>

@@ -28,6 +28,14 @@ export function closeEffect(workspace: Workspace, id = workspace.activeId): void
 	workspace.close(s.id);
 }
 
+/** Close several effects, asking once when any of them has unsaved changes */
+export function closeEffects(workspace: Workspace, ids: string[]): void {
+	const list = workspace.sessions.filter((x) => ids.includes(x.id));
+	const dirty = list.filter((s) => s.dirty);
+	if (dirty.length && workspace.prefs.confirmClose && !confirm(`${dirty.length === 1 ? `${dirty[0].file.name} has` : `${dirty.length} effects have`} unsaved changes. Close ${list.length === 1 ? 'it' : 'them'} anyway?`)) return;
+	for (const s of list) workspace.close(s.id);
+}
+
 export async function openExample(workspace: Workspace, e: { name: string; load: () => Promise<string> }): Promise<void> {
 	if (workspace.host.openExample) return workspace.host.openExample(e.name);
 	workspace.open({ file: { name: `${e.name}.particle.json`, id: `example:${e.name}` }, text: await e.load() });

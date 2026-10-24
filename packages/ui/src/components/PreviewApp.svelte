@@ -2,6 +2,7 @@
 	import type { Workspace } from '../state/workspace.svelte';
 	import Viewport from './panels/Viewport.svelte';
 	import { handleKey } from '../lib/keyboard';
+	import ContextMenu from './shell/ContextMenu.svelte';
 
 	interface Props {
 		workspace: Workspace;
@@ -26,6 +27,7 @@
 		</footer>
 	{/if}
 </div>
+<ContextMenu />
 
 <style>
 	.preview {

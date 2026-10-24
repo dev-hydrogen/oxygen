@@ -52,6 +52,8 @@ export class Workspace {
 	recordingKeys = $state(false);
 	/** bumped to ask the viewport to frame the particles */
 	frameRequest = $state(0);
+	/** asks the viewport for a screenshot (to the clipboard, or saved too) or a GIF (from now, or from the start) */
+	captureRequest = $state<{ kind: 'copy' | 'save' | 'gif' | 'gifStart' | 'video' | 'videoStart'; at: number } | null>(null);
 	/** Panel the UI asks the shell to reveal (outliner → curves, problems → inspector) */
 	reveal = $state<{ panel: string; at: number } | null>(null);
 	/** Panel the UI asks the shell to close (View menu) */
@@ -62,8 +64,13 @@ export class Workspace {
 	suspended = $state(false);
 	/** Layout preset the UI asks the shell to apply */
 	layoutRequest = $state<{ name: LayoutName; at: number } | null>(null);
-	/** bumped when a resource pack is opened: textures resolve again */
+	/** bumped when a resource pack is opened or an image is imported: textures resolve again */
 	packVersion = $state(0);
+	/**
+	 * Images imported on their own (no resource pack), by texture path (`textures/particle/spark`) → data URL.
+	 * They stand in for the pack's file at that path for every open effect.
+	 */
+	importedTextures = $state<Record<string, string>>({});
 	/** Toast-style status message ("Saved fire.particle.json") */
 	notice = $state<{ text: string; kind: 'info' | 'error'; at: number } | null>(null);
 
@@ -145,6 +152,51 @@ export class Workspace {
 		this.savedPrefs = JSON.stringify(prefs);
 		this.prefs = prefs;
 		this.prefsLoaded = true;
+		// the kept images (another VS Code editor may have changed them), and the ones too big to keep from this run
+		const kept = readImportedTextures(s.importedTextures);
+		const next = { ...kept };
+		for (const [k, v] of Object.entries(this.importedTextures)) if (!this.keptTextures.has(k)) next[k] ??= v;
+		this.keptTextures = new Set(Object.keys(kept));
+		if (JSON.stringify(next) !== JSON.stringify(this.importedTextures)) {
+			this.importedTextures = next;
+			this.packVersion++;
+		}
+	}
+
+	/** texture paths whose imported image is kept with the settings (the rest last until Oxygen closes) */
+	private keptTextures = new Set<string>();
+
+	/** A texture path as an image URL: an imported image first, then the host (the file's pack, vanilla sprites) */
+	resolveTexture(texture: string, file: FileRef): Promise<string | null> {
+		const imported = this.importedTextures[textureKey(texture)];
+		return imported ? Promise.resolve(imported) : this.host.resolveTexture(texture, file);
+	}
+
+	/**
+	 * Use an image for a texture path without a resource pack. Small images are kept with the settings so they
+	 * come back next time; bigger ones last until Oxygen closes. Says which.
+	 */
+	importTexture(texture: string, dataUrl: string): boolean {
+		const key = textureKey(texture);
+		this.importedTextures = { ...this.importedTextures, [key]: dataUrl };
+		this.packVersion++;
+		const kept = keepable(this.importedTextures);
+		this.keptTextures = new Set(Object.keys(kept));
+		this.updateSettings({ importedTextures: Object.keys(kept).length ? kept : undefined });
+		return this.keptTextures.has(key);
+	}
+
+	/** Stop using an imported image: the path resolves through the pack again */
+	removeImportedTexture(texture: string): void {
+		const key = textureKey(texture);
+		if (!(key in this.importedTextures)) return;
+		const next = { ...this.importedTextures };
+		delete next[key];
+		this.importedTextures = next;
+		this.packVersion++;
+		const kept = keepable(next);
+		this.keptTextures = new Set(Object.keys(kept));
+		this.updateSettings({ importedTextures: Object.keys(kept).length ? kept : undefined });
 	}
 
 	/** The host's stored settings (layout, preferences) */
@@ -461,4 +513,29 @@ export class Workspace {
 	say(text: string, kind: 'info' | 'error' = 'info'): void {
 		this.notice = { text, kind, at: Date.now() };
 	}
+}
+
+/** a texture path without its extension, the way the game looks it up */
+export const textureKey = (texture: string) => texture.replace(/\.(png|tga)$/i, '');
+
+/** imported images the settings can carry: the browser keeps settings in a few megabytes of local storage */
+const KEEP_EACH = 512 * 1024;
+const KEEP_TOTAL = 2 * 1024 * 1024;
+
+function keepable(all: Record<string, string>): Record<string, string> {
+	const out: Record<string, string> = {};
+	let total = 0;
+	for (const [k, v] of Object.entries(all)) {
+		if (v.length > KEEP_EACH || total + v.length > KEEP_TOTAL) continue;
+		out[k] = v;
+		total += v.length;
+	}
+	return out;
+}
+
+function readImportedTextures(raw: unknown): Record<string, string> {
+	const out: Record<string, string> = {};
+	if (!raw || typeof raw !== 'object') return out;
+	for (const [k, v] of Object.entries(raw)) if (typeof v === 'string' && v.startsWith('data:image/')) out[k] = v;
+	return out;
 }

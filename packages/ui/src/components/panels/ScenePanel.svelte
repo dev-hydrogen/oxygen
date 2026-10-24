@@ -74,9 +74,17 @@
 		s.setScene({ entity: { ...s.scene.entity, ...patch } }, restart);
 	}
 
+	/** a locator's place and turn are read every frame: the effect follows without starting over */
 	function setLocator(patch: Partial<Locator>) {
 		if (!current) return;
-		setEntity({ locators: locators.map((l) => (l === current ? { ...l, ...patch } : l)) });
+		setEntity({ locators: locators.map((l) => (l === current ? { ...l, ...patch } : l)) }, false);
+	}
+
+	function setOrigin(k: number, v: number) {
+		if (!s) return;
+		const o = (ent.origin ?? [0, 0, 0]).map((n, j) => (j === k ? v : n)) as Vec3;
+		setEntity({ origin: o.some((n) => n) ? o : undefined }, false);
+		s.entity.update(0);
 	}
 
 	function uniqueName(base: string): string {
@@ -246,6 +254,26 @@
 			{#if importNote}<p class="note">{importNote}</p>{/if}
 		</section>
 
+		{#if s.spawnMode !== 'entity'}
+			{@const own = s.scene.emitter}
+			<section>
+				<h3>Emitter</h3>
+				<div class="vec">
+					<span class="dim">Spawns at</span>
+					{#each [0, 1, 2] as k (k)}
+						<ScrubNumber label="Emitter position {'xyz'[k]}" value={(own?.position ?? [0, 0, 0])[k]} step={0.0625} onchange={(v) => s.placeEmitter(null, { position: (own?.position ?? [0, 0, 0]).map((n, m) => (m === k ? (v ?? 0) : n)) as [number, number, number], rotation: own?.rotation })} />
+					{/each}
+				</div>
+				<div class="vec">
+					<span class="dim">Turned</span>
+					{#each [0, 1, 2] as k (k)}
+						<ScrubNumber label="Emitter turn about {'xyz'[k]} (degrees)" value={(own?.rotation ?? [0, 0, 0])[k]} step={15} onchange={(v) => s.placeEmitter(null, { position: own?.position ?? [0, 0, 0], rotation: (own?.rotation ?? [0, 0, 0]).map((n, m) => (m === k ? (v ?? 0) : n)) as [number, number, number] })} />
+					{/each}
+				</div>
+				<p class="note">Where /particle or the Script API spawns the effect. Right-click the emitter in the viewport to move it (G) or turn it (R) with handles. The game can't turn an emitter spawned this way, only an entity or a locator can, so a turn here is for previewing local-space motion.</p>
+			</section>
+		{/if}
+
 		<section>
 			<h3>Entity</h3>
 			<div class="row">
@@ -327,6 +355,11 @@
 					onchange={setMotion}
 				/>
 			</div>
+			<div class="vec">
+				<span class="dim">{motion.kind === 'still' ? 'Stands at' : 'Around'}</span>
+				{#each [0, 1, 2] as k (k)}<ScrubNumber label="Entity position {'xyz'[k]}" value={(ent.origin ?? [0, 0, 0])[k]} step={0.0625} onchange={(v) => setOrigin(k, v ?? 0)} />{/each}
+			</div>
+			<p class="note">Click the entity, a locator or a path point in the viewport to move it with handles or the arrow keys.</p>
 			{#if motion.kind === 'still' || motion.kind === 'bob'}
 				<div class="row">
 					<span>Facing</span>

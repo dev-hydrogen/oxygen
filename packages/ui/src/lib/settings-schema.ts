@@ -1,6 +1,8 @@
 import type { Host } from '../host';
-import { DEFAULT_PREFERENCES, SPEEDS, type Preferences } from '../state/preferences';
+import { CAMERA_MOVE_SECONDS, CAMERA_MOVES } from './camera-moves';
+import { CAPTURE_SCALES, DEFAULT_PREFERENCES, GIF_RATES, GIF_SIZES, RECORD_LIMIT, RECORD_REPEATING, SPEEDS, VIDEO_RATES, VIDEO_SIZES, type Preferences } from '../state/preferences';
 import type { SettingsSection } from '../state/workspace.svelte';
+import { GIZMO_LIMIT_CHOICES } from '../viewport/gizmos';
 
 /** The rows of the Settings dialog: what each preference is called, explained, and set with */
 
@@ -168,6 +170,21 @@ export const SETTINGS: SettingRow[] = [
 	{ section: 'viewport', group: 'Helpers', key: 'gizmos.children', label: 'Child emitters', help: 'Emitters its events spawn', control: { type: 'toggle' } },
 	{ section: 'viewport', group: 'Helpers', key: 'gizmos.killPlane', label: 'Kill plane', control: { type: 'toggle' } },
 	{ section: 'viewport', group: 'Helpers', key: 'gizmos.entity', label: 'Entity', help: 'The stand-in entity, its locator and its path, when an effect is spawned on it', control: { type: 'toggle' } },
+	{ section: 'viewport', group: 'Screenshots and recordings', key: 'captureTransparent', label: 'Screenshots leave out the background', help: 'See-through behind the particles, partly where they’re translucent', control: { type: 'toggle' } },
+	{ section: 'viewport', group: 'Screenshots and recordings', key: 'captureHelpers', label: 'Include the helpers', help: 'The grid, emitter markers, the entity and the rest of what Show draws. Off keeps the particles and the blocks.', control: { type: 'toggle' } },
+	{ section: 'viewport', group: 'Screenshots and recordings', key: 'captureScale', label: 'Screenshot size', help: 'Times the viewport’s own size, up to 8192 pixels a side', control: { type: 'select', options: CAPTURE_SCALES.map((n) => ({ value: String(n), label: `${n}× the viewport` })) } },
+	{ section: 'viewport', group: 'Screenshots and recordings', key: 'gifSeconds', label: 'Recording length', help: `GIFs and videos. Until the effect ends stops when its last particle is gone, at most after ${RECORD_LIMIT} s; one that repeats forever (Repeat, or looping on an entity) records ${RECORD_REPEATING} s. A set length stops sooner if the effect ends first.`, control: { type: 'range', min: 0, max: RECORD_LIMIT, step: 0.5, format: (v) => (v ? `${v} s` : 'Until the effect ends') } },
+	{ section: 'viewport', group: 'Screenshots and recordings', key: 'gifSize', label: 'GIF size', help: 'Its longest side', control: { type: 'select', options: GIF_SIZES.map((n) => ({ value: String(n), label: `${n} px` })) } },
+	{ section: 'viewport', group: 'Screenshots and recordings', key: 'gifFps', label: 'GIF frame rate', help: '25 and 50 keep exact time; GIF counts in hundredths of a second', control: { type: 'select', options: GIF_RATES.map((n) => ({ value: String(n), label: `${n} frames a second` })) } },
+	{ section: 'viewport', group: 'Screenshots and recordings', key: 'gifTransparent', label: 'GIFs leave out the background', help: 'A GIF pixel is either there or not, so translucent particles come out dithered. With the background, colours and soft edges are exact.', control: { type: 'toggle' } },
+	{ section: 'viewport', group: 'Screenshots and recordings', key: 'videoSize', label: 'Video size', help: 'Its longest side. MP4 where the browser can make it, else WebM; always with the background.', control: { type: 'select', options: VIDEO_SIZES.map((n) => ({ value: String(n), label: `${n} px` })) } },
+	{ section: 'viewport', group: 'Screenshots and recordings', key: 'videoFps', label: 'Video frame rate', control: { type: 'select', options: VIDEO_RATES.map((n) => ({ value: String(n), label: `${n} frames a second` })) } },
+	{ section: 'viewport', group: 'Screenshots and recordings', key: 'recordCamera', label: 'Camera while recording', help: `Moves from the view the recording starts at, round what it looks at, over the recording's length (${CAMERA_MOVE_SECONDS} s a move when it runs until the effect ends)`, control: { type: 'select', options: CAMERA_MOVES.map((m) => ({ value: m.id, label: m.label })) } },
+	{ section: 'viewport', group: 'Screenshots and recordings', key: 'watermark', label: 'Oxygen watermark', help: 'A small Oxygen mark in the bottom right of screenshots, GIFs and videos', control: { type: 'toggle' } },
+	{ section: 'viewport', group: 'Helper limits', key: 'gizmoLimits.facing', label: 'Facing axes on at most', help: 'Past this, a sample of the particles gets axes. Each keeps them while it lives.', control: { type: 'select', options: GIZMO_LIMIT_CHOICES.facing.map((n) => ({ value: String(n), label: `${n.toLocaleString()} particles` })) } },
+	{ section: 'viewport', group: 'Helper limits', key: 'gizmoLimits.velocity', label: 'Velocity arrows on at most', help: 'Past this, a sample of the particles gets an arrow. Each keeps it while it lives.', control: { type: 'select', options: GIZMO_LIMIT_CHOICES.velocity.map((n) => ({ value: String(n), label: `${n.toLocaleString()} particles` })) } },
+	{ section: 'viewport', group: 'Helper limits', key: 'gizmoLimits.emitters', label: 'Emitter markers for at most', control: { type: 'select', options: GIZMO_LIMIT_CHOICES.emitters.map((n) => ({ value: String(n), label: `${n.toLocaleString()} emitters` })) } },
+	{ section: 'viewport', group: 'Helper limits', key: 'gizmoLimits.shapes', label: 'Emitter shapes for at most', control: { type: 'select', options: GIZMO_LIMIT_CHOICES.shapes.map((n) => ({ value: String(n), label: `${n.toLocaleString()} emitters` })) } },
 ];
 
 export function getPref(p: Preferences, key: string): unknown {

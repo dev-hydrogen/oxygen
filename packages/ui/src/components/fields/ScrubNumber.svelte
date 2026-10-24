@@ -62,7 +62,19 @@
 		if (e.button !== 0 || document.activeElement === input) return;
 		e.preventDefault();
 		drag = { x: e.clientX, start: value ?? 0, moved: false };
+		sent = value;
 		input.setPointerCapture(e.pointerId);
+	}
+
+	/** what dragging last handed out: it applies as it goes, at most every few frames */
+	let sent: number | null = null;
+	let sendTimer: ReturnType<typeof setTimeout> | null = null;
+	function send() {
+		sendTimer = null;
+		const n = draft === null ? null : Number(draft);
+		if (n === null || !Number.isFinite(n) || n === sent) return;
+		sent = n;
+		onchange(n);
 	}
 
 	function move(e: PointerEvent) {
@@ -73,6 +85,7 @@
 		scrubbing = true;
 		const s = stepFor(e);
 		draft = showNumber(clamp(drag.start + Math.round(dx / 4) * s), decimalsFor(s));
+		sendTimer ??= setTimeout(send, 30);
 	}
 
 	function up(e: PointerEvent) {
@@ -82,9 +95,12 @@
 		scrubbing = false;
 		if (input.hasPointerCapture(e.pointerId)) input.releasePointerCapture(e.pointerId);
 		if (d.moved) {
+			if (sendTimer) clearTimeout(sendTimer);
 			const n = draft === null ? null : Number(draft);
 			draft = null;
-			if (n !== null && n !== value) onchange(n);
+			if (n !== null && n !== sent && n !== value) onchange(n);
+			sent = null;
+			sendTimer = null;
 		} else {
 			input.focus();
 			input.select();

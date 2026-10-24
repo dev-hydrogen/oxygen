@@ -5,6 +5,8 @@ export interface Host {
 	openFiles?(): Promise<OpenedFile[]>;
 	/** Ask the user for a resource pack folder (used to resolve textures and child effects). Resolves with its name, or null when cancelled. */
 	openPack?(): Promise<string | null>;
+	/** Ask the user for a picture file with the host's own dialog (desktop); without it the browser's file picker is used */
+	pickImage?(): Promise<File | null>;
 	/** Write a document back to where it came from. Returns the new path when saved somewhere new. */
 	save(file: FileRef, text: string): Promise<FileRef | null>;
 	/** Write a document somewhere new the user picks. Returns where, or null when it was handed off (a download). */
@@ -13,6 +15,13 @@ export interface Host {
 	savedNote?(file: FileRef): string | null;
 	/** Hand the user a copy of the document as a downloaded file */
 	download?(file: FileRef, text: string): void;
+	/**
+	 * Keep a screenshot or GIF of the viewport (desktop: in Pictures/Oxygen; VS Code: where the user picks).
+	 * Resolves with its path, or null when cancelled. Without it the browser downloads it.
+	 */
+	saveCapture?(name: string, data: Blob): Promise<string | null>;
+	/** Put a file on the clipboard as a file, for pasting into chats and folders (a GIF can't go on it as a picture) */
+	copyFile?(path: string): Promise<boolean>;
 	/** Bundled example effects */
 	examples(): Promise<{ name: string; load: () => Promise<string> }[]>;
 	/** Open an example the host's own way (VS Code: a new untitled document in its own editor) */
@@ -102,6 +111,21 @@ export interface GameStatus {
 	error?: string | null;
 	/** installed games that packs can be deployed to */
 	installs: string[];
+	/** where Deploy copies packs: a found install, or paths the user set (`custom`) */
+	target?: { name: string; custom: boolean; paths: DeployPaths } | null;
+}
+
+/**
+ * Where packs are copied and the content log is read, each settable by hand (Linux and macOS launchers, unusual
+ * setups). Null: nowhere (Oxygen Link isn't deployed, no content log).
+ */
+export interface DeployPaths {
+	/** the folder resource packs are copied into */
+	resource: string;
+	/** the folder behavior packs (Oxygen Link) are copied into */
+	behavior: string | null;
+	/** a folder of ContentLog files, or one log file */
+	logs: string | null;
 }
 
 export interface GameLink {
@@ -109,6 +133,12 @@ export interface GameLink {
 	onStatus(cb: (s: GameStatus) => void): void;
 	/** Copy the file's resource pack into the game's development packs. Resolves with what happened. */
 	deploy(file: FileRef): Promise<string>;
+	/** Choose where Deploy copies packs: a found install by name, or paths set by hand. Kept for next time. */
+	setDeployTarget?(choice: { install: string } | { paths: DeployPaths }): Promise<GameStatus>;
+	/** Ask for one of the paths with the host's dialog (a folder; for the log, a folder or a file). Null when cancelled. */
+	pickPath?(kind: keyof DeployPaths, current: string | null): Promise<string | null>;
+	/** The other paths a resource pack folder suggests (its behavior_packs sibling, a logs folder above it) */
+	suggestPaths?(resource: string): Promise<DeployPaths>;
 	/**
 	 * Spawn an effect in front of the connected player. With variables it goes through the Oxygen Link
 	 * behavior pack (a script's spawnParticle with a MolangVariableMap); without, through /particle.

@@ -2,6 +2,8 @@
 //   node tools/logo.mjs
 //   → docs/media/logo-on-dark.png, docs/media/logo-on-light.png       (README banner, transparent)
 //   → packages/ui/src/assets/logo-dark.png, logo-light.png             (the app's top bar)
+//   → packages/ui/src/assets/watermark.png                             (the corner of screenshots and recordings)
+//   node tools/logo.mjs watermark                                      (just the layouts named)
 // Needs network access for the Outfit font (Google Fonts).
 import { chromium } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -29,6 +31,17 @@ const LAYOUTS = {
 		tagline: null,
 		bloom: [[1, 0.8], [2.5, 0.6], [5, 0.45]],
 		files: { dark: 'packages/ui/src/assets/logo-dark.png', light: 'packages/ui/src/assets/logo-light.png' },
+	},
+	// the app layout without the icon, for the corner of screenshots and recordings (128 px tall: sharp up to 4K)
+	watermark: {
+		W: 100, H: 32, S: 4, texel: 1, k: 0.16,
+		orbit: { cx: 47, cy: 17, rx: 44, ry: 9.5, tilt: -6, head: 0.3, span: 1.78 },
+		trail: 150, sparks: 7,
+		icon: null,
+		name: { size: 17, x: 9, y: 22.5, glow: 12 },
+		tagline: null,
+		bloom: [[1, 0.8], [2.5, 0.6], [5, 0.45]],
+		files: { dark: 'packages/ui/src/assets/watermark.png' },
 	},
 };
 
@@ -151,6 +164,7 @@ window.render = (L, light) => {
 		}
 	}
 	function icon(g) {
+		if (!L.icon) return;
 		const { x, y, s } = L.icon, r = (s * 14) / 64, u = s / 64;
 		g.fillStyle = '#1a1e2c';
 		g.beginPath();
@@ -207,10 +221,12 @@ const p = await b.newPage();
 await p.setContent(page, { waitUntil: 'networkidle' });
 await p.evaluate(() => Promise.all([document.fonts.load('600 150px Outfit'), document.fonts.load('300 27px Outfit')]));
 if (!(await p.evaluate(() => document.fonts.check('600 150px Outfit')))) throw new Error('The Outfit font did not load (needs network access)');
-for (const L of Object.values(LAYOUTS))
+const only = process.argv.slice(2);
+for (const [name, L] of Object.entries(LAYOUTS))
 	for (const [variant, light] of [['dark', false], ['light', true]]) {
-		const url = await p.evaluate(([l, li]) => window.render(l, li), [L, light]);
 		const file = L.files[variant];
+		if (!file || (only.length && !only.includes(name))) continue;
+		const url = await p.evaluate(([l, li]) => window.render(l, li), [L, light]);
 		mkdirSync(dirname(file), { recursive: true });
 		writeFileSync(file, Buffer.from(url.split(',')[1], 'base64'));
 		console.log('saved', file);

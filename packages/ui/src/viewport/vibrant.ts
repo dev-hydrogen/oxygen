@@ -213,8 +213,11 @@ class MeterPass extends Pass {
 	}
 }
 
-/** How exposure follows the screen: like the game over time, settled at once (single pictures), or not at all */
-export type ExposureMode = 'adapt' | 'settled' | 'off';
+/**
+ * How exposure follows the screen: like the game over time, settled at once (single pictures), not at all, or
+ * held where it is (a capture drawing the same moment twice)
+ */
+export type ExposureMode = 'adapt' | 'settled' | 'off' | 'hold';
 
 /**
  * Vibrant Visuals approximation: HDR render, auto exposure, bloom, the pack's tone mapper. Particles are
@@ -317,7 +320,7 @@ export class VibrantPipeline {
 		this.composer.setSize(w, h);
 		this.display.grading = grading;
 		this.meter.reference = reference;
-		this.meter.enabled = this.exposureMode !== 'off';
+		this.meter.enabled = this.exposureMode !== 'off' && this.exposureMode !== 'hold';
 		// the meter runs before bloom and tone mapping, so this frame is already exposed for what it shows
 		this.meter.onMetered = (value) => {
 			this.exposure = this.exposureMode === 'settled' ? this.adaptation.settle(value) : this.adaptation.step(value, dt);

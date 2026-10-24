@@ -1,9 +1,9 @@
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
-import { ConnectServer, deployPack, entriesFor, entryPath, findInstalls, parseContentLog, readPack } from '../src/index';
+import { ConnectServer, deployHelper, deployPack, entriesFor, entryPath, findInstalls, folderInstall, installPaths, latestContentLog, parseContentLog, pathsInstall, readLogSince, readPack } from '../src/index';
 
 const LOG = `00:02:20[Molang][error]-particles/sparks.json | ParticleEffect::_extractComponents | minecraft:particle_appearance_billboard | ParticleAppearanceBillboardComponent | size | 0.3 +* 1 | Error: binary Add '+' operator at end of expression
 00:02:20[Molang][error]-particles/sparks.json | events | pop | v.x = 1 +* 2; | Error: binary Add '+' operator at end of expression
@@ -22,9 +22,55 @@ describe('content log', () => {
 		expect(e[3].message).toContain('continued line');
 		expect(entriesFor(e, 'C:/pack/particles/sparks.json')).toHaveLength(2);
 	});
+
+	it('reads only complete new lines, the newest part of a big log, and starts over when the file shrank', () => {
+		const file = join(mkdtempSync(join(tmpdir(), 'oxygen-log-')), 'ContentLog.txt');
+		writeFileSync(file, 'one\ntwo\nthr');
+		expect(readLogSince(file, 0)).toEqual({ text: 'one\ntwo\n', end: 8 });
+		appendFileSync(file, 'ee\n');
+		expect(readLogSince(file, 8)).toEqual({ text: 'three\n', end: 14 });
+		expect(readLogSince(file, 14)).toEqual({ text: '', end: 14 });
+		// over the limit: the partial first line is dropped
+		expect(readLogSince(file, 0, 9)).toEqual({ text: 'three\n', end: 14 });
+		writeFileSync(file, 'new\n');
+		expect(readLogSince(file, 14)).toEqual({ text: 'new\n', end: 4 });
+	});
 });
 
 describe('deploy', () => {
+	it('deploys into a folder chosen by hand as it is', () => {
+		const tmp = mkdtempSync(join(tmpdir(), 'oxygen-folder-'));
+		const pack = join(tmp, 'MyRP');
+		mkdirSync(join(pack, 'particles'), { recursive: true });
+		writeFileSync(join(pack, 'manifest.json'), JSON.stringify({ header: { name: 'My RP', uuid: 'u' }, modules: [{ type: 'resources' }] }));
+		mkdirSync(join(tmp, 'logs'));
+		writeFileSync(join(tmp, 'logs', 'ContentLog1.txt'), '');
+		// any folder: the pack goes straight in, with nowhere for behavior packs
+		const anywhere = folderInstall(join(tmp, 'out', 'packs'), []);
+		expect(deployPack(readPack(pack), anywhere)).toBe(join(tmp, 'out', 'packs', 'MyRP'));
+		expect(anywhere.logs).toBe(join(tmp, 'logs'));
+		expect(deployHelper(anywhere)).toBeNull();
+		// a resource_packs folder: Oxygen Link goes next door
+		const rp = folderInstall(join(tmp, 'game', 'development_resource_packs'), []);
+		expect(rp.packs).toEqual({ resource: join(tmp, 'game', 'development_resource_packs'), behavior: join(tmp, 'game', 'development_behavior_packs') });
+		expect(deployHelper(rp)).toContain(join(tmp, 'game', 'development_behavior_packs'));
+	});
+
+	it('takes every path set by hand as it is', () => {
+		const tmp = mkdtempSync(join(tmpdir(), 'oxygen-paths-'));
+		const paths = { resource: join(tmp, 'rp'), behavior: join(tmp, 'elsewhere', 'bp'), logs: join(tmp, 'game.log') };
+		const inst = pathsInstall(paths);
+		expect(installPaths(inst)).toEqual(paths);
+		// a log file of its own; a log folder that isn't there yet reads as no log
+		writeFileSync(paths.logs, '');
+		expect(latestContentLog(inst)).toBe(paths.logs);
+		expect(latestContentLog(pathsInstall({ ...paths, logs: join(tmp, 'missing') }))).toBeNull();
+		expect(deployHelper(inst)).toContain(join(tmp, 'elsewhere', 'bp'));
+		expect(deployHelper(pathsInstall({ ...paths, behavior: null }))).toBeNull();
+		// a found install's own paths
+		expect(installPaths({ name: 'Minecraft', comMojang: join(tmp, 'com.mojang'), logs: null })).toEqual({ resource: join(tmp, 'com.mojang', 'development_resource_packs'), behavior: join(tmp, 'com.mojang', 'development_behavior_packs'), logs: null });
+	});
+
 	it('copies a resource pack into development_resource_packs', () => {
 		const tmp = mkdtempSync(join(tmpdir(), 'oxygen-deploy-'));
 		const pack = join(tmp, 'MyRP');
@@ -82,7 +128,7 @@ describe('Oxygen Link helper pack', () => {
 		// the script body is valid JavaScript once the import is taken out
 		expect(() => new Function(files['scripts/main.js'].replace(/^import[^\n]*\n/, ''))).not.toThrow();
 		const tmp = mkdtempSync(join(tmpdir(), 'oxygen-link-'));
-		const target = deployHelper({ name: 'test', comMojang: tmp, logs: null });
+		const target = deployHelper({ name: 'test', comMojang: tmp, logs: null })!;
 		expect(target).toContain('development_behavior_packs');
 		expect(existsSync(join(target, 'scripts', 'main.js'))).toBe(true);
 		expect(scriptSpawnCommand('a:b', { 'v.size': 0.3, 'variable.tint': [1, 0, 0] })).toBe('scriptevent oxygen:link_spawn {"effect":"a:b","vars":{"variable.size":0.3,"variable.tint":[1,0,0]}}');

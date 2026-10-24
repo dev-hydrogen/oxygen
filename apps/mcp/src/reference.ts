@@ -34,7 +34,7 @@ function kindText(k: FieldKind): string {
 		case 'timeline':
 			return `object: ${k.key === 'time' ? 'seconds' : 'blocks travelled'} → event name(s)`;
 		case 'color':
-			return 'colour: [r, g, b, a] Molang, "#AARRGGBB", or a gradient { "interpolant": Molang, "gradient": { "<t>": colour } }';
+			return 'colour: [r, g, b, a] Molang, "#AARRGGBB", or a gradient { "interpolant": Molang, "gradient": { "<t>": colour } } whose stop colours may be Molang too (only the stops the interpolant uses run)';
 		case 'uv':
 			return 'UV: texture_width/height, uv, uv_size (Molang), or a "flipbook" object';
 		default:

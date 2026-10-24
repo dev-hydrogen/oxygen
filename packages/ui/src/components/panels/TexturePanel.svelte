@@ -1,8 +1,10 @@
 <script lang="ts">
-	import type { Workspace } from '../../state/workspace.svelte';
+	import { textureKey, type Workspace } from '../../state/workspace.svelte';
 	import { joinPath } from '../../lib/molang-text';
 	import type { RGBA } from '../../lib/color';
 	import ColorPicker from '../fields/ColorPicker.svelte';
+	import ScrubNumber from '../fields/ScrubNumber.svelte';
+	import { importTextureFile, pickTexture } from '../../lib/import-texture';
 
 	interface Props {
 		workspace: Workspace;
@@ -48,18 +50,22 @@
 	const texW = $derived(Number(uv?.texture_width ?? image?.width ?? 16) || 1);
 	const texH = $derived(Number(uv?.texture_height ?? image?.height ?? 16) || 1);
 
-	// load (or reload when the file's texture changes)
+	/** the open effect's texture is an image imported on its own, not the pack's file */
+	const imported = $derived(!!texturePath && textureKey(texturePath) in workspace.importedTextures);
+
+	// load (or reload when the file's texture changes, a pack opens or an image is imported)
 	$effect(() => {
 		const s = session;
 		const path = texturePath;
-		if (!s || !path || path === imagePath) return;
-		imagePath = path;
+		const at = `${workspace.packVersion}|${path}`;
+		if (!s || !path || at === imagePath) return;
+		imagePath = at;
 		image = null;
 		dirty = false;
 		loadNote = 'Loading texture…';
-		void workspace.host.resolveTexture(path, s.file).then((url) => {
+		void workspace.resolveTexture(path, s.file).then((url) => {
 			if (!url) {
-				loadNote = `“${path}” isn't in the pack. Open your resource pack folder so Oxygen can find it.`;
+				loadNote = `“${path}” isn't in the pack. Open your resource pack folder so Oxygen can find it, or use Import image… for just the picture.`;
 				tick++;
 				return;
 			}
@@ -461,9 +467,29 @@
 		}
 	}
 
+	let dropping = $state(false);
+
+	/** Point the effect at another texture (the game looks it up without the extension) */
+	function setTexturePath(text: string) {
+		if (!session) return;
+		const path = text.trim().replace(/\\/g, '/').replace(/^\/+/, '').replace(/\.(png|tga)$/i, '');
+		if (path === texturePath) return;
+		const at = 'particle_effect/description/basic_render_parameters/texture';
+		if (path) session.doc.set(at, path, 'Change texture');
+		else session.doc.remove(at, 'Remove texture');
+	}
+
+	function stopImport() {
+		if (!texturePath) return;
+		workspace.removeImportedTexture(texturePath);
+		workspace.say(`${texturePath} comes from the pack again.`);
+	}
+
 	async function saveTexture() {
 		if (!image || !session) return;
 		const blob: Blob = await new Promise((r) => image!.toBlob((b) => r(b!), 'image/png'));
+		// painted over an imported image: the import follows
+		if (imported) workspace.importTexture(texturePath, image.toDataURL('image/png'));
 		const ok = (await workspace.host.saveTexture?.(texturePath, session.file, blob)) ?? false;
 		if (!ok) {
 			const a = document.createElement('a');
@@ -510,19 +536,33 @@
 			{/key}
 			<button class="btn" disabled={!dirty} onclick={saveTexture}>Save texture</button>
 		{:else}
-			<label class="gridsel">
+			<span class="gridsel" title="Grid lines every this many texture units (empty: off)">
 				Grid
-				<select bind:value={grid} aria-label="Atlas grid">
-					<option value={0}>Off</option>
-					<option value={4}>4</option>
-					<option value={8}>8</option>
-					<option value={16}>16</option>
-					<option value={32}>32</option>
-				</select>
-			</label>
+				<span class="gridnum"><ScrubNumber label="Atlas grid" value={grid || null} min={0} step={1} placeholder="Off" allowEmpty onchange={(v) => (grid = v && v > 0 ? v : 0)} /></span>
+			</span>
 		{/if}
 		<span class="spacer"></span>
-		<span class="dim ox-num">{texturePath || 'no texture'}{image ? ` · ${image.width}×${image.height}px` : ''}{uv ? ` · UV units ${texW}×${texH}` : ''}</span>
+		<input
+			class="path ox-code"
+			aria-label="Texture path"
+			title="The texture path, from the pack's root and without .png (basic_render_parameters › texture)"
+			placeholder="textures/particle/…"
+			spellcheck="false"
+			value={texturePath}
+			onchange={(e) => setTexturePath(e.currentTarget.value)}
+			onkeydown={(e) => {
+				if (e.key === 'Enter') e.currentTarget.blur();
+				else if (e.key === 'Escape') {
+					e.currentTarget.value = texturePath;
+					e.currentTarget.blur();
+				}
+			}}
+		/>
+		<span class="dim ox-num">{imported ? 'imported' : ''}{image ? `${imported ? ' · ' : ''}${image.width}×${image.height}px` : ''}{uv ? ` · UV units ${texW}×${texH}` : ''}</span>
+		{#if imported}
+			<button class="btn" title="Show the pack's file at this path again" onclick={stopImport}>Remove import</button>
+		{/if}
+		<button class="btn" title="Use a picture file as this effect's texture, without a resource pack (or drop one here)" onclick={() => void pickTexture(workspace)}>Import image…</button>
 		<button
 			class="btn"
 			onclick={() => {
@@ -531,7 +571,28 @@
 			}}>Fit</button
 		>
 	</div>
-	<div class="stage" bind:this={wrap} bind:clientWidth={w} bind:clientHeight={h}>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="stage"
+		class:dropping
+		bind:this={wrap}
+		bind:clientWidth={w}
+		bind:clientHeight={h}
+		ondragover={(e) => {
+			if (!e.dataTransfer?.types.includes('Files')) return;
+			e.preventDefault();
+			dropping = true;
+		}}
+		ondragleave={() => (dropping = false)}
+		ondrop={(e) => {
+			const f = e.dataTransfer?.files?.[0];
+			dropping = false;
+			if (!f) return;
+			e.preventDefault();
+			e.stopPropagation();
+			void importTextureFile(workspace, f);
+		}}
+	>
 		<canvas
 			bind:this={canvas}
 			style:width="{w}px"
@@ -617,11 +678,22 @@
 		align-items: center;
 		color: var(--ox-haze);
 	}
-	select {
-		background: var(--ox-input);
-		border: none;
-		border-radius: var(--ox-radius);
+	.gridnum {
+		width: 46px;
+	}
+	.path {
+		flex: 0 1 260px;
+		min-width: 120px;
 		height: 22px;
+		background: var(--ox-input);
+		color: var(--ox-frost);
+		border: 1px solid transparent;
+		border-radius: var(--ox-radius);
+		padding: 0 6px;
+		outline: none;
+	}
+	.path:focus {
+		border-color: var(--ox-lox);
 	}
 	.stage {
 		flex: 1;
@@ -629,6 +701,10 @@
 		position: relative;
 		overflow: hidden;
 		background: var(--ox-night);
+	}
+	.stage.dropping {
+		outline: 2px dashed var(--ox-lox);
+		outline-offset: -4px;
 	}
 	canvas {
 		display: block;

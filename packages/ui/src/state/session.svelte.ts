@@ -10,6 +10,9 @@ import { PARALLEL_THRESHOLD, ParallelSim, type RemoteEmitter } from '../sim/para
 import { applyPinned, isContextKey, isTempKey, scenarioQuery, scenarioVariables, writeScenarioGlobals, type InputScene } from '../lib/inputs';
 import { BlockWorld, DEFAULT_ENTITY, DEFAULT_GRADING, DEFAULT_LIGHTING, EntityDummy, readEntity, type EntitySettings, type GradingModel, type LightingModel, type TextureSet } from '@oxygen/scene';
 import { writeMeta } from '@oxygen/format';
+import { editNeedsRestart } from '../lib/restart';
+
+export { editNeedsRestart };
 
 export interface SceneSettings {
 	ground: 'plane' | 'none';
@@ -25,10 +28,26 @@ export interface SceneSettings {
 	 * Other effects playing in the same scene. They share this world, so temps, caps and global queries
 	 * interact the way they do in-game.
 	 */
-	extras?: { effect: string; position: [number, number, number] }[];
+	extras?: { effect: string; position: [number, number, number]; rotation?: Vec3 }[];
+	/**
+	 * Where the effect's own emitter spawns when it isn't on the entity (/particle, the Script API), and a turn
+	 * in degrees about X, Y and Z. In-game /particle and spawnParticle can't turn an emitter (an entity or a
+	 * locator does that), so the turn is for previewing local-space motion in a turned frame.
+	 */
+	emitter?: { position?: Vec3; rotation?: Vec3 };
 }
 
-export const DEFAULT_SCENE: SceneSettings = { ground: 'plane', entity: DEFAULT_ENTITY, skyLight: 15, blockLight: 0, keepInFile: false };
+/** degrees about X, then Y, then Z (three.js's 'XYZ' order) as a quaternion [x, y, z, w] */
+export function turnQuat(r: Vec3 | undefined): [number, number, number, number] | undefined {
+	if (!r || !r.some((v) => v)) return undefined;
+	const [hx, hy, hz] = r.map((v) => (v * Math.PI) / 360);
+	const c1 = Math.cos(hx), c2 = Math.cos(hy), c3 = Math.cos(hz);
+	const s1 = Math.sin(hx), s2 = Math.sin(hy), s3 = Math.sin(hz);
+	return [s1 * c2 * c3 + c1 * s2 * s3, c1 * s2 * c3 - s1 * c2 * s3, c1 * c2 * s3 + s1 * s2 * c3, c1 * c2 * c3 - s1 * s2 * s3];
+}
+
+/** Scenes are kept in the file (so its moves and turns undo with the file's other edits); nothing is written until the scene is changed */
+export const DEFAULT_SCENE: SceneSettings = { ground: 'plane', entity: DEFAULT_ENTITY, skyLight: 15, blockLight: 0, keepInFile: true };
 
 export type SpawnMode = 'command' | 'script' | 'entity';
 
@@ -54,48 +73,9 @@ export interface PreviewStats {
  * One open particle file: its text document, the compiled definition, the analysis and a live simulation.
  * The document is the source of truth; everything else is derived from it after each change.
  */
-/** components read once, when the emitter starts (or fires its burst): edits show on a fresh start */
-const READ_AT_START = /^minecraft:emitter_(initialization|lifetime_(once|looping|expression)|rate_(instant|manual)|local_space)$/;
 /** how far back the preview can be scrubbed, and how often it keeps a snapshot to replay from (seconds) */
 const HISTORY_SECONDS = 30;
 const HISTORY_STEP = 0.1;
-/** components read when a particle is created: with a burst nothing new is created, so edits need a fresh start */
-const READ_AT_CREATION = /^minecraft:(emitter_shape_\w+|particle_initial_(speed|spin)|particle_lifetime_expression)$/;
-
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-
-/**
- * Whether an edit only shows after the effect starts over. Appearance, motion, curves and the like are read
- * every frame, so those edits run in place (EffectSession.hotSwap).
- */
-export function editNeedsRestart(before: unknown, after: unknown): boolean {
-	type Json = Record<string, unknown> | undefined;
-	const a = (before ?? {}) as Record<string, unknown>;
-	const b = (after ?? {}) as Record<string, unknown>;
-	for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
-		if (k === 'particle_effect') continue;
-		if (k === 'oxygen') {
-			// saved camera views don't touch the simulation; scenarios and the scene do
-			const { cameras: _a, ...ma } = (a[k] ?? {}) as Record<string, unknown>;
-			const { cameras: _b, ...mb } = (b[k] ?? {}) as Record<string, unknown>;
-			if (!same(ma, mb)) return true;
-		} else if (!same(a[k], b[k])) return true;
-	}
-	const pa = (a.particle_effect ?? {}) as Record<string, Json>;
-	const pb = (b.particle_effect ?? {}) as Record<string, Json>;
-	if (pa.description?.identifier !== pb.description?.identifier) return true;
-	// events fire again from the start (creation events have already run)
-	if (!same(pa.events, pb.events)) return true;
-	const ca = (pa.components ?? {}) as Record<string, unknown>;
-	const cb = (pb.components ?? {}) as Record<string, unknown>;
-	const burst = 'minecraft:emitter_rate_instant' in cb || 'minecraft:emitter_rate_manual' in cb;
-	for (const k of new Set([...Object.keys(ca), ...Object.keys(cb)])) {
-		if (same(ca[k], cb[k])) continue;
-		if (READ_AT_START.test(k)) return true;
-		if (burst && READ_AT_CREATION.test(k)) return true;
-	}
-	return false;
-}
 
 export class EffectSession {
 	readonly id = `fx${nextId++}`;
@@ -203,6 +183,8 @@ export class EffectSession {
 	private publishTimer = 0;
 	/** the spawned effect's own emitter (it may be running in a worker: see `rootEmitter`) */
 	private rootId: number | null = null;
+	/** the scene's other effects' emitters, by their place in `scene.extras` (null: didn't spawn) */
+	extraIds: (number | null)[] = [];
 	/** heavy scenes spread independent emitter trees over worker threads */
 	readonly parallel: ParallelSim;
 	private sinceSpawn = 0;
@@ -403,8 +385,13 @@ export class EffectSession {
 	}
 
 	private onChange(change: DocumentChange) {
-		void change;
 		this.version++;
+		// undo, redo or an edit from outside can change the scene kept in the file: the preview follows it
+		if (change.origin !== 'edit' && this.syncScene()) {
+			this.rebuild();
+			this.restart();
+			return;
+		}
 		const before = this.builtFrom;
 		const old = this.def;
 		this.rebuild();
@@ -530,7 +517,11 @@ export class EffectSession {
 		const loop = (d: EffectDefinition) => (this.loopPreview && d.emitter.lifetime?.type === 'looping' ? true : undefined);
 		if (this.spawnMode === 'entity') this.entity.respawn();
 		// bind_to_actor: false starts it where the entity is (the world origin with a locator) and leaves it there
-		const start = this.spawnMode === 'entity' && this.scene.entity.unbound ? this.entity.unboundStart() : { position: [0, 0, 0] as Vec3, rotation: undefined };
+		const own = this.scene.emitter;
+		const start =
+			this.spawnMode === 'entity' && this.scene.entity.unbound
+				? this.entity.unboundStart()
+				: { position: [...(this.spawnMode === 'entity' ? [0, 0, 0] : (own?.position ?? [0, 0, 0]))] as Vec3, rotation: this.spawnMode === 'entity' ? undefined : turnQuat(own?.rotation) };
 		writeScenarioGlobals(this.world, sc, this.inputScene());
 		this.rootId = this.world.spawn(this.def, {
 			position: start.position,
@@ -541,10 +532,10 @@ export class EffectSession {
 			preEffect: sc?.preEffect ?? null,
 			loop: loop(this.def),
 		}).id;
-		for (const x of this.scene.extras ?? []) {
+		this.extraIds = (this.scene.extras ?? []).map((x) => {
 			const def = this.resolveChild(x.effect);
-			if (def && !def.failed) this.world.spawn(def, { position: [...x.position], context: this.spawnMode, loop: loop(def) });
-		}
+			return def && !def.failed ? this.world.spawn(def, { position: [...x.position], rotation: turnQuat(x.rotation), context: this.spawnMode, loop: loop(def) }).id : null;
+		});
 		// creation events fire on spawn
 		this.timeline.commitEvents(this.world.time);
 		this.sinceSpawn = 0;
@@ -603,6 +594,31 @@ export class EffectSession {
 		if (saved.blocks) for (const [x, y, z, b] of BlockWorld.fromJSON(saved.blocks).entries()) this.blocks.set(x, y, z, b);
 	}
 
+	/** The scene as the file keeps it (what applyScene writes) */
+	private sceneForFile(): unknown {
+		const { keepInFile, ...rest } = this.scene;
+		void keepInFile;
+		const blocks = this.blocks.size && this.blocks.size <= 20000 ? this.blocks.toJSON() : undefined;
+		return JSON.parse(JSON.stringify({ ...rest, timeOfDay: this.timeOfDay, blocks }));
+	}
+
+	/**
+	 * The file's scene changed without the scene being edited here (undo, redo, an outside edit): take it on.
+	 * Without one in the file any more, a kept scene goes back to the default. True when something changed.
+	 */
+	private syncScene(): boolean {
+		const saved = readMeta(this.doc).scene;
+		// a scene not kept in the file only comes back when the file has one again (undoing "keep in file" off)
+		if (!this.scene.keepInFile && !saved) return false;
+		if (saved && this.scene.keepInFile && JSON.stringify(saved) === JSON.stringify(this.sceneForFile())) return false;
+		if (!saved && JSON.stringify(this.scene) === JSON.stringify(DEFAULT_SCENE) && !this.blocks.size) return false;
+		this.blocks.clear();
+		if (saved) this.loadScene();
+		else this.scene = { ...DEFAULT_SCENE };
+		this.applyScene();
+		return true;
+	}
+
 	/** Push scene settings into the simulation (and the file, when kept there) */
 	applyScene(save = false): void {
 		const sc = this.scene;
@@ -611,12 +627,7 @@ export class EffectSession {
 		this.world.blocks = this.blocks.size ? this.blocks : null;
 		this.entity.settings = sc.entity;
 		this.blocksVersion = this.blocks.version;
-		if (save && sc.keepInFile) {
-			const { keepInFile, ...rest } = sc;
-			void keepInFile;
-			const blocks = this.blocks.size && this.blocks.size <= 20000 ? this.blocks.toJSON() : undefined;
-			writeMeta(this.doc, 'scene', { ...rest, timeOfDay: this.timeOfDay, blocks }, 'Edit scene');
-		}
+		if (save && sc.keepInFile) writeMeta(this.doc, 'scene', this.sceneForFile() as never, 'Edit scene');
 	}
 
 	/** Fill (or with null, clear) every cell of a box, corners inclusive; `hollow` only fills the shell */
@@ -644,6 +655,27 @@ export class EffectSession {
 		if (wasKept && !this.scene.keepInFile) writeMeta(this.doc, 'scene', undefined, 'Remove scene from file');
 		this.applyScene(true);
 		if (restart) this.restart();
+	}
+
+	/**
+	 * Move or turn the effect's own emitter (`which` null) or one of the scene's other effects, keeping what's
+	 * already flying: the live emitter goes there at once. Kept in the scene settings.
+	 */
+	placeEmitter(which: number | null, place: { position: Vec3; rotation?: Vec3 }): void {
+		const rotation = place.rotation?.some((v) => v) ? place.rotation : undefined;
+		if (which === null) {
+			const emitter = place.position.some((v) => v) || rotation ? { position: place.position.some((v) => v) ? place.position : undefined, rotation } : undefined;
+			this.setScene({ emitter }, false);
+		} else {
+			const list = this.scene.extras ?? [];
+			this.setScene({ extras: list.map((x, i) => (i === which ? { ...x, position: [...place.position] as [number, number, number], rotation } : x)) }, false);
+		}
+		if (which === null && this.spawnMode === 'entity') return;
+		const id = which === null ? this.rootId : this.extraIds[which];
+		const live = id === null || id === undefined ? undefined : this.world.emitters.find((e) => e.id === id);
+		if (!live) return;
+		live.position = [...place.position] as Vec3;
+		live.rotation = turnQuat(rotation) ?? [0, 0, 0, 1];
 	}
 
 	setSpawnMode(mode: SpawnMode): void {
@@ -887,6 +919,40 @@ export class EffectSession {
 		this.sinceSpawn += this.lastDt;
 		this.publish(true);
 		this.refreshStats();
+	}
+
+	/**
+	 * Change a value of an emitter or one of its particles from the Debug panel, as if it had been that all along:
+	 * a variable (the emitter's) or temp, or the particle's age, lifetime, rotation, position or velocity.
+	 * The game has nothing like it. Paused, the frame is drawn again with it; playing on carries on from it.
+	 */
+	setDebugValue(emitterId: number, particleId: number, what: string, value: Value): boolean {
+		if (this.halt) return false;
+		const e = this.world.emitters.find((x) => x.id === emitterId);
+		if (!e) return false;
+		if (/^(v|variable|t|temp)\./i.test(what)) this.world.setValue(e, what, value);
+		else {
+			const i = e.pool.indexOfId(particleId);
+			if (i < 0 || typeof value !== 'number' || !Number.isFinite(value)) return false;
+			const p = e.pool;
+			const axis = (k: string) => ['x', 'y', 'z'].indexOf(k.slice(-1));
+			if (what === 'age') p.age[i] = Math.max(0, value);
+			else if (what === 'lifetime') {
+				p.lifetime[i] = Math.max(0, value);
+				p.hasLifetime[i] = 1;
+			} else if (what === 'rot') p.rot[i] = value;
+			else if (/^pos\.[xyz]$/.test(what)) p.pos[i * 3 + axis(what)] = value;
+			else if (/^vel\.[xyz]$/.test(what)) p.vel[i * 3 + axis(what)] = value;
+			else return false;
+		}
+		// replays from before the change would undo it
+		this.frameStart = null;
+		this.lastFrameStart = null;
+		this.scrubAt = null;
+		this.markHistoryStart();
+		if (!this.playing) this.world.prepareRender();
+		this.debugVersion++;
+		return true;
 	}
 
 	/** Last trace of a field for the selected particle (value lenses) */

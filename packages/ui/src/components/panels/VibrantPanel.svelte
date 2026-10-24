@@ -53,7 +53,7 @@
 
 	async function loadSource(): Promise<ImageData> {
 		if (source && sourceFor === texture) return source;
-		const url = await workspace.host.resolveTexture(texture, s!.file);
+		const url = await workspace.resolveTexture(texture, s!.file);
 		if (!url) throw new Error(`“${texture}” isn't in the pack, so there's nothing to make a glow map from.`);
 		const img = await new Promise<HTMLImageElement>((resolve, reject) => {
 			const i = new Image();

@@ -3,6 +3,7 @@ import type { LayoutName, Workspace } from '../state/workspace.svelte';
 import { SPEEDS } from '../state/preferences';
 import { closeEffect, copyShareLink, save } from './actions';
 import { flushEdits } from './flush';
+import { pickTexture } from './import-texture';
 
 /**
  * What each key command does (lib/keys.ts names them and their keys). Menus and the palette show the same
@@ -32,6 +33,7 @@ const RUNNERS: Record<string, Runner> = {
 	'file.new': { run: (w) => void w.newEffect(), when: (w) => w.host.kind !== 'vscode' },
 	'file.open': { run: (w) => void w.openFiles(), when: (w) => !!w.host.openFiles },
 	'file.openPack': { run: (w) => void w.openPack(), when: (w) => !!w.host.openPack },
+	'file.importTexture': { run: (w) => void pickTexture(w), when: needsEffect },
 	'file.save': { run: (w) => save(w), when: needsEffect },
 	'file.saveAs': { run: (w) => save(w, true), when: (w, s) => !!s && !!(w.host.saveAs || w.host.download) },
 	'file.share': { run: (w) => void copyShareLink(w), when: (w, s) => !!s && w.host.kind === 'web' },
@@ -73,6 +75,12 @@ const RUNNERS: Record<string, Runner> = {
 	'preview.step': { run: (_w, s) => s!.stepFrame(), when: (_w, s) => !!s && !s.playing },
 	'preview.frame': { run: (w) => void (w.frameRequest = Date.now()), when: needsEffect },
 	'preview.repeat': { run: (_w, s) => void (s!.loopPreview = !s!.loopPreview), when: needsEffect },
+	'preview.copyScreenshot': { run: (w) => void (w.captureRequest = { kind: 'copy', at: Date.now() }), when: needsEffect },
+	'preview.saveScreenshot': { run: (w) => void (w.captureRequest = { kind: 'save', at: Date.now() }), when: needsEffect },
+	'preview.recordGif': { run: (w) => void (w.captureRequest = { kind: 'gif', at: Date.now() }), when: needsEffect },
+	'preview.recordGifStart': { run: (w) => void (w.captureRequest = { kind: 'gifStart', at: Date.now() }), when: needsEffect },
+	'preview.recordVideo': { run: (w) => void (w.captureRequest = { kind: 'video', at: Date.now() }), when: needsEffect },
+	'preview.recordVideoStart': { run: (w) => void (w.captureRequest = { kind: 'videoStart', at: Date.now() }), when: needsEffect },
 	'preview.slower': { run: (_w, s) => stepSpeed(s!, -1), when: needsEffect },
 	'preview.faster': { run: (_w, s) => stepSpeed(s!, 1), when: needsEffect },
 	'preview.paths': { run: (_w, s) => void (s!.showPaths = !s!.showPaths), when: needsEffect },

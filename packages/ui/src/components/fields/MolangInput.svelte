@@ -7,6 +7,7 @@
 	import type { EffectSession } from '../../state/session.svelte';
 	import { molangText } from '../../lib/molang-text';
 	import { registerFlush } from '../../lib/flush';
+	import { afterRelease } from '../../lib/pointer';
 
 	interface Props {
 		session: EffectSession;
@@ -141,7 +142,9 @@
 		if (!view) return;
 		const rec = sel ? session.traceFor(path) : undefined;
 		const ref = session.analysis?.byPath.get(path);
-		view.dispatch({ effects: setLenses.of(rec && !timer ? { values: rec.values, result: rec.result, features: ref?.field.expr.program.features } : null) });
+		const lenses = rec && !timer ? { values: rec.values, result: rec.result, features: ref?.field.expr.program.features } : null;
+		// lenses change the text's width: not while a click in it is still held
+		return afterRelease(() => view?.dispatch({ effects: setLenses.of(lenses) }));
 	});
 
 	onDestroy(() => {

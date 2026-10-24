@@ -24,6 +24,8 @@ export class CameraRig {
 	private drag: { mode: 'orbit' | 'look' | 'pan'; x: number; y: number; pivot: THREE.Vector3; depth: number; id: number } | null = null;
 	/** two-finger touch: pinch moves along the view, the midpoint pans */
 	private touches = new Map<number, { x: number; y: number }>();
+	/** a left press the scene keeps for itself (a move handle under the pointer) */
+	grabbed: (e: PointerEvent) => boolean = () => false;
 
 	constructor(
 		private camera: THREE.PerspectiveCamera,
@@ -116,7 +118,7 @@ export class CameraRig {
 			if (this.touches.size !== 1) return;
 		}
 		const mode = e.button === 2 ? 'look' : e.button === 1 || (e.button === 0 && (e.shiftKey || e.ctrlKey || e.metaKey)) ? 'pan' : e.button === 0 ? 'orbit' : null;
-		if (!mode) return;
+		if (!mode || (e.button === 0 && this.grabbed(e))) return;
 		this.dom.setPointerCapture(e.pointerId);
 		const pivot = mode === 'look' ? this.camera.position.clone() : this.grab(x, y, w, h);
 		this.drag = { mode, x, y, pivot, depth: this.depthOf(pivot), id: e.pointerId };

@@ -47,14 +47,14 @@ export class SceneObjects {
 		this.group.add(this.axes, this.dots, this.path);
 	}
 
-	private rebuildPath(m: Extract<Motion, { kind: 'path' }>) {
+	private rebuildPath(m: Extract<Motion, { kind: 'path' }>, o: [number, number, number]) {
 		for (const c of [...this.path.children]) {
 			this.path.remove(c);
 			const o = c as THREE.Line | THREE.Points;
 			o.geometry.dispose();
 			(o.material as THREE.Material).dispose();
 		}
-		const pts = m.points.map((p) => new THREE.Vector3(p[0], p[1] + 0.02, p[2]));
+		const pts = m.points.map((p) => new THREE.Vector3(p[0] + o[0], p[1] + o[1] + 0.02, p[2] + o[2]));
 		if (!pts.length) return;
 		const line = new (m.ends === 'loop' && pts.length > 2 ? THREE.LineLoop : THREE.Line)(
 			new THREE.BufferGeometry().setFromPoints(pts),
@@ -82,10 +82,11 @@ export class SceneObjects {
 		const motion = s.scene.entity.motion;
 		this.path.visible = onEntity && this.showEntity && motion.kind === 'path';
 		if (this.path.visible && motion.kind === 'path') {
-			const key = JSON.stringify(motion);
+			const origin = s.scene.entity.origin ?? [0, 0, 0];
+			const key = JSON.stringify([motion, origin]);
 			if (key !== this.pathKey) {
 				this.pathKey = key;
-				this.rebuildPath(motion);
+				this.rebuildPath(motion, origin);
 			}
 		}
 		if (shown) {

@@ -2,6 +2,7 @@
 	import type { EffectSession } from '../../state/session.svelte';
 	import { sampleField, type FieldSamples } from '../../lib/sampler';
 	import { showNumber } from '../../lib/numbers';
+	import { afterRelease } from '../../lib/pointer';
 
 	/** A field's real values over time, drawn under it while it's selected (opens the Graph panel on click) */
 	interface Props {
@@ -17,8 +18,13 @@
 		const s = session;
 		const p = path;
 		void s.version;
-		const t = setTimeout(() => (samples = sampleField(s, p, 6, 1234)), 200);
-		return () => clearTimeout(t);
+		// sampling runs the effect: not while a button is held (a click in a field would see the page stall)
+		let cancel = () => {};
+		const t = setTimeout(() => (cancel = afterRelease(() => (samples = sampleField(s, p, 6, 1234)))), 200);
+		return () => {
+			clearTimeout(t);
+			cancel();
+		};
 	});
 
 	const W = 300;

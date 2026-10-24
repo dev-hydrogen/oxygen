@@ -18,8 +18,10 @@ When the game silently ignores something, Oxygen's preview does the same, and th
   (size 1, colour white, position 0). The rest of the effect still runs.
 - **Reading a variable before anything sets it stops the whole expression.** The field then reads 0. Writing
   `v.speed ?? 1` gives a fallback instead. Oxygen marks these reads and offers that fix.
-- **Temporary values (`t.*`) are global.** They're never cleared and are shared by every effect playing. That's
-  how an event hands values to an effect it spawns, but it also means a temp can hold a leftover value.
+- **Temporary values (`t.*`) are global.** They're shared by every effect playing (in the game, by every client
+  entity and animation too) and keep their values until something writes them again. That's how an event hands
+  values to an effect it spawns, but it also means a temp can hold a leftover value. In the game an attachable
+  on screen (a shield, a bow, a trident) wipes every temp each frame it's drawn; Oxygen has no attachables.
 - **Numbers are 32-bit,** as in the game, so `0.1 + 0.2 == 0.3` is true.
 - **Curves aren't ready in an emitter's creation expression.** Elsewhere they clamp at their ends: a curve read
   before its first key or after its last holds that key's value.
