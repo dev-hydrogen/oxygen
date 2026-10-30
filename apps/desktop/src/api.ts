@@ -54,6 +54,8 @@ export interface DesktopApi {
 	saveCapture(name: string, base64: string): Promise<string | null>;
 	/** put a file on the clipboard as a file (pastes into chats and folders) */
 	copyFile(path: string): Promise<boolean>;
+	/** show a file in the system's file manager, selected */
+	revealFile(path: string): void;
 	findEffect(file: string | null, identifier: string): Promise<string | null>;
 	/** the pack file defining `identifier` (next to `file`), read for opening */
 	openEffect(file: string | null, identifier: string): Promise<DesktopFile | null>;

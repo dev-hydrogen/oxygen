@@ -327,7 +327,7 @@
 			if (saveToo || !copied) {
 				const kept = await keepCapture(workspace.host, captureName(s.identifier, 'png'), png);
 				if (!kept) return;
-				workspace.say(`${copied ? 'Copied the screenshot' : `Saved the screenshot (this ${workspace.host.kind === 'vscode' ? 'view' : 'browser'} won't put pictures on the clipboard)`} (${size}) ${copied ? 'and saved it to' : 'to'} ${kept.where}.`);
+				workspace.say(`${copied ? 'Copied the screenshot' : `Saved the screenshot (this ${workspace.host.kind === 'vscode' ? 'view' : 'browser'} won't put pictures on the clipboard)`} (${size}) ${copied ? 'and saved it to' : 'to'} ${kept.where}.`, 'info', { path: kept.path, linger: true });
 			} else workspace.say(`Copied a screenshot (${size}) to the clipboard.`);
 		} catch (e) {
 			workspace.say(`The screenshot didn't work: ${(e as Error).message}`, 'error');
@@ -377,7 +377,7 @@
 			const size = gif ? `${gif.width} × ${gif.height}` : `${video!.width} × ${video!.height}`;
 			const kb = Math.round(blob.size / 1024).toLocaleString();
 			const label = `a ${(frames / o.fps).toFixed(1)} s ${gif ? 'GIF' : ext.toUpperCase()} (${size}, ${o.fps} fps, ${kb} KB)`;
-			workspace.say(copied ? `Recorded ${label}, saved it to ${kept.where} and copied the file.` : `Recorded ${label} and saved it to ${kept.where}.`);
+			workspace.say(copied ? `Recorded ${label}, saved it to ${kept.where} and copied the file.` : `Recorded ${label} and saved it to ${kept.where}.`, 'info', { path: kept.path, linger: true });
 		} catch (e) {
 			void out.video?.cancel().catch(() => {});
 			workspace.say(`The ${what} didn't work: ${(e as Error).message}`, 'error');

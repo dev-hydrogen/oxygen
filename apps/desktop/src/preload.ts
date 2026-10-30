@@ -14,6 +14,7 @@ const api: DesktopApi = {
 	saveTexture: (file, texture, png) => ipcRenderer.invoke('saveTexture', file, texture, png),
 	saveCapture: (name, data) => ipcRenderer.invoke('saveCapture', name, data),
 	copyFile: (path) => ipcRenderer.invoke('copyFile', path),
+	revealFile: (path) => ipcRenderer.send('revealFile', path),
 	findEffect: (file, identifier) => ipcRenderer.invoke('findEffect', file, identifier),
 	openEffect: (file, identifier) => ipcRenderer.invoke('openEffect', file, identifier),
 	parentInputs: (file, identifier) => ipcRenderer.invoke('parentInputs', file, identifier),

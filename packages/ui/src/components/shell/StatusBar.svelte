@@ -17,14 +17,23 @@
 
 	let notice = $state<string | null>(null);
 	let noticeKind = $state<'info' | 'error'>('info');
+	/** the file the message names, when the host can show it in its folder */
+	let noticePath = $state<string | null>(null);
 	let timer: ReturnType<typeof setTimeout>;
 	$effect(() => {
 		const n = workspace.notice;
 		if (!n) return;
 		notice = n.text;
 		noticeKind = n.kind;
+		noticePath = n.path && workspace.host.revealFile ? n.path : null;
 		clearTimeout(timer);
-		timer = setTimeout(() => (notice = null), untrack(() => workspace.prefs.noticeSeconds) * 1000);
+		// a capture's message stays twice as long, to give time to click its path
+		timer = setTimeout(() => (notice = null), untrack(() => workspace.prefs.noticeSeconds) * (n.linger ? 2 : 1) * 1000);
+	});
+	/** the message around its file path, so the path alone can be a link */
+	const noticeParts = $derived.by(() => {
+		const at = notice && noticePath ? notice.indexOf(noticePath) : -1;
+		return at < 0 ? null : { before: notice!.slice(0, at), after: notice!.slice(at + noticePath!.length) };
 	});
 </script>
 
@@ -43,7 +52,12 @@
 		{/if}
 	{/if}
 	<span class="spacer"></span>
-	{#if notice}<span class="item notice" class:error={noticeKind === 'error'} role="status">{notice}</span>{/if}
+	{#if notice && noticePath}
+		{@const reveal = () => workspace.host.revealFile?.(noticePath!)}
+		<span class="item notice" class:error={noticeKind === 'error'} role="status">
+			{#if noticeParts}{noticeParts.before}<button class="file" title="Show it in its folder" onclick={reveal}>{noticePath}</button>{noticeParts.after}{:else}<button class="file" title="Show it in its folder" onclick={reveal}>{notice}</button>{/if}
+		</span>
+	{:else if notice}<span class="item notice" class:error={noticeKind === 'error'} role="status">{notice}</span>{/if}
 	{#if u.state === 'available' && u.page}
 		<a class="item update" href={u.page} target="_blank" rel="noreferrer" title="This copy can't install updates itself: the release page has the download">Oxygen {u.version} is out: download it</a>
 	{:else if u.state === 'available'}
@@ -125,6 +139,19 @@
 	}
 	.update:hover {
 		background: rgba(147, 189, 245, 0.26);
+	}
+	.file {
+		border: none;
+		padding: 0;
+		background: none;
+		color: var(--ox-lox);
+		font: inherit;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		cursor: pointer;
+	}
+	.file:hover {
+		color: var(--ox-frost);
 	}
 	.notice.error {
 		color: var(--ox-error);

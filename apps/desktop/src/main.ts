@@ -304,6 +304,9 @@ function registerIpc() {
 			return false;
 		}
 	});
+	ipcMain.on('revealFile', (_e, path: string) => {
+		if (existsSync(path)) shell.showItemInFolder(path);
+	});
 	ipcMain.handle('readPackText', (_e, file: string | null, path: string) => {
 		const root = packRoot(file);
 		const p = root ? join(root, path) : null;

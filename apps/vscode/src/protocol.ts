@@ -35,4 +35,6 @@ export type ToExtension =
 	| { type: 'writeText'; id: number; path: string; text: string }
 	| { type: 'writeTexture'; id: number; path: string; pngBase64: string }
 	/** a screenshot or GIF of the viewport: ask where to keep it; the reply is its path, or null */
-	| { type: 'saveCapture'; id: number; name: string; base64: string };
+	| { type: 'saveCapture'; id: number; name: string; base64: string }
+	/** show a file (a capture just kept, a saved document) in the system's file manager */
+	| { type: 'revealFile'; path: string };

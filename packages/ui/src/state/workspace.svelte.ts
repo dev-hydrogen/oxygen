@@ -72,7 +72,7 @@ export class Workspace {
 	 */
 	importedTextures = $state<Record<string, string>>({});
 	/** Toast-style status message ("Saved fire.particle.json") */
-	notice = $state<{ text: string; kind: 'info' | 'error'; at: number } | null>(null);
+	notice = $state<{ text: string; kind: 'info' | 'error'; at: number; path?: string; linger?: boolean } | null>(null);
 
 	/** Effect JSON fetched from the host by identifier (null = not found) */
 	private effectCache = new Map<string, unknown | null>();
@@ -446,7 +446,7 @@ export class Workspace {
 			const file: FileRef | null = await this.host.save(session.file, session.doc.text);
 			session.markSaved(file ?? undefined);
 			if (file) this.openFilesChanged();
-			this.say(`Saved ${session.file.name}${this.host.savedNote?.(session.file) ?? ''}`);
+			this.say(`Saved ${session.file.name}${this.host.savedNote?.(session.file) ?? ''}`, 'info', { path: this.host.filePath?.(session.file) });
 		} catch (e) {
 			if ((e as Error).name === 'AbortError') return;
 			this.say(`Couldn't save ${session.file.name}: ${(e as Error).message}`, 'error');
@@ -461,7 +461,7 @@ export class Workspace {
 			if (!file) return;
 			session.markSaved(file);
 			this.openFilesChanged();
-			this.say(`Saved ${session.file.name}${this.host.savedNote?.(session.file) ?? ''}`);
+			this.say(`Saved ${session.file.name}${this.host.savedNote?.(session.file) ?? ''}`, 'info', { path: this.host.filePath?.(session.file) });
 		} catch (e) {
 			if ((e as Error).name === 'AbortError') return;
 			this.say(`Couldn't save ${session.file.name}: ${(e as Error).message}`, 'error');
@@ -510,8 +510,12 @@ export class Workspace {
 		else session.doc.redo();
 	}
 
-	say(text: string, kind: 'info' | 'error' = 'info'): void {
-		this.notice = { text, kind, at: Date.now() };
+	/**
+	 * `path`: a file the message names (a saved effect, a capture just kept); clicking it shows the file in its folder.
+	 * `linger`: the message stays twice as long (captures, whose path is worth the time to click).
+	 */
+	say(text: string, kind: 'info' | 'error' = 'info', file?: { path?: string | null; linger?: boolean }): void {
+		this.notice = { text, kind, at: Date.now(), path: file?.path ?? undefined, linger: file?.linger };
 	}
 }
 

@@ -90,7 +90,7 @@ export const SETTINGS: SettingRow[] = [
 		group: 'Messages',
 		key: 'noticeSeconds',
 		label: 'Status messages stay for',
-		help: '“Saved …”, “Copied a link …” and errors, in the status bar',
+		help: '“Saved …”, “Copied a link …” and errors, in the status bar. Click a file’s path or name to show it in its folder; a message about a screenshot or recording stays twice as long',
 		control: { type: 'range', min: 1, max: 30, step: 0.5, format: (v) => `${v} s` },
 	},
 

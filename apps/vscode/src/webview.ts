@@ -133,6 +133,11 @@ export async function saveCapture(webview: vscode.Webview, file: vscode.Uri, id:
 	void webview.postMessage({ type: 'reply', id, value: path } satisfies ToWebview);
 }
 
+/** Show a file in the system's file manager, selected (a path, or a document's file: URI) */
+export function revealFile(path: string): void {
+	void vscode.commands.executeCommand('revealFileInOS', path.startsWith('file:') ? vscode.Uri.parse(path) : vscode.Uri.file(path));
+}
+
 export function localRoots(extensionUri: vscode.Uri): vscode.Uri[] {
 	return [vscode.Uri.joinPath(extensionUri, 'dist'), ...(vscode.workspace.workspaceFolders ?? []).map((f) => f.uri)];
 }

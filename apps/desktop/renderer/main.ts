@@ -50,6 +50,8 @@ const host: Host = {
 	saveTexture: async (texture, file, png) => desk.saveTexture(file.id, texture, await toBase64(png)),
 	saveCapture: async (name, data) => desk.saveCapture(name, await toBase64(data)),
 	copyFile: (path) => desk.copyFile(path),
+	revealFile: (path) => desk.revealFile(path),
+	filePath: (file) => (file.id && !file.id.startsWith('example:') ? file.id : null),
 	findEffect: (identifier) => desk.findEffect(app.workspace.active?.file.id ?? null, identifier),
 	parentInputs: (identifier, file) => desk.parentInputs(file.id, identifier),
 	async openEffect(identifier) {

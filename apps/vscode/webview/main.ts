@@ -67,6 +67,9 @@ const host: Host = {
 		for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
 		return ((await ask((id) => ({ type: 'saveCapture', id, name, base64: btoa(s) }))) as string | null) ?? null;
 	},
+	revealFile: (path) => post({ type: 'revealFile', path }),
+	// a document's id is its URI; the extension reveals file: URIs as they are
+	filePath: (file) => (file.id?.startsWith('file:') ? file.id : null),
 	async loadSettings() {
 		return settings;
 	},

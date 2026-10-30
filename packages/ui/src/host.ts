@@ -22,6 +22,10 @@ export interface Host {
 	saveCapture?(name: string, data: Blob): Promise<string | null>;
 	/** Put a file on the clipboard as a file, for pasting into chats and folders (a GIF can't go on it as a picture) */
 	copyFile?(path: string): Promise<boolean>;
+	/** Show a file in the system's file manager (Explorer, Finder), selected; `path` is one `filePath` or `saveCapture` gave */
+	revealFile?(path: string): void;
+	/** Where a document is on disk, for revealFile; null when it isn't a file there (unsaved, an example) */
+	filePath?(file: FileRef): string | null;
 	/** Bundled example effects */
 	examples(): Promise<{ name: string; load: () => Promise<string> }[]>;
 	/** Open an example the host's own way (VS Code: a new untitled document in its own editor) */
