@@ -3,11 +3,14 @@
 	import type { Snippet } from 'svelte';
 	import { PHASE_NAME, PHASE_VAR } from '../../lib/molang-text';
 	import type { FieldPhase } from '@oxygen/effect';
+	import { tip as tipAction } from '../../lib/tip';
 
 	interface Props {
 		label: string;
 		phase: FieldPhase;
 		help?: string;
+		/** the key the field writes, as the file names it (`emitter_rate_steady › spawn_rate`) */
+		where?: string;
 		/** evaluation order (first frame), shown as a small badge */
 		order?: number | null;
 		problems?: Problem[];
@@ -19,19 +22,19 @@
 		actions?: Snippet;
 	}
 
-	let { label, phase, help = '', order = null, problems = [], selected = false, stacked = false, onselect, children, actions }: Props = $props();
+	let { label, phase, help = '', where, order = null, problems = [], selected = false, stacked = false, onselect, children, actions }: Props = $props();
 
 	const worst = $derived(problems.some((p) => p.severity === 'error') ? 'error' : problems.some((p) => p.severity === 'warning') ? 'warning' : problems.length ? 'info' : null);
-	const tip = $derived([help, ...problems.map((p) => p.message)].filter(Boolean).join('\n\n'));
+	const tip = $derived({ where, text: [help, ...problems.map((p) => p.message)].filter(Boolean).join('\n\n') || (where ? PHASE_NAME[phase] : '') });
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="row" class:selected class:stacked style:--phase={PHASE_VAR[phase]} onclick={onselect}>
-	<div class="label" title={tip}>
+	<div class="label" use:tipAction={tip}>
 		<span class="text">{label}</span>
 		{#if worst}<span class="flag {worst}" aria-label="{problems.length} problem{problems.length === 1 ? '' : 's'}"></span>{/if}
-		{#if order !== null}<span class="order ox-num" title="{PHASE_NAME[phase]}, step {order} of the first frame">{order}</span>{/if}
+		{#if order !== null}<span class="order ox-num" use:tipAction={`${PHASE_NAME[phase]}, step ${order} of the first frame`}>{order}</span>{/if}
 	</div>
 	<div class="editor">
 		{@render children()}

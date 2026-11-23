@@ -6,6 +6,7 @@ import type { FileRef, Host, OpenedFile, UpdateState } from '../host';
 import { EffectSession } from './session.svelte';
 import type { Gizmos } from '../viewport/gizmos';
 import { KEY_COMMANDS, Keymap, viewCommands } from '../lib/keys';
+import { materialParents } from '../lib/materials';
 import { DEFAULT_PREFERENCES, readPreferences, type InspectorView, type Preferences, type RenderMode } from './preferences';
 
 export type LayoutName = 'editor' | 'preview' | 'code' | 'events' | 'curves' | 'look' | 'debug';
@@ -24,6 +25,15 @@ export type { InspectorView } from './preferences';
 /** Sections of the Settings and About dialogs */
 export type SettingsSection = 'general' | 'preview' | 'viewport' | 'keyboard' | 'data';
 export type AboutSection = 'about' | 'new' | 'agents' | 'engine' | 'system' | 'credits';
+/** Pages of the Documentation (docs/*.md, bundled) */
+export type DocsPage = 'guide' | 'molang' | 'accuracy';
+
+/** One answer to a question: `primary` is what Enter gives, `danger` loses something, `quiet` steps back */
+export interface AskAction {
+	id: string;
+	label: string;
+	kind?: 'primary' | 'danger' | 'quiet';
+}
 
 /** Open documents, the active one, and app-wide preferences */
 export class Workspace {
@@ -44,6 +54,13 @@ export class Workspace {
 	settingsSection = $state<SettingsSection>('general');
 	aboutOpen = $state(false);
 	aboutSection = $state<AboutSection>('about');
+	/** Inspector categories folded shut, by id (kept with the settings) */
+	inspectorFolded = $state<Record<string, boolean>>({});
+	/** a question waiting for its answer (AskDialog shows it) */
+	question = $state.raw<{ title: string; message?: string; actions: AskAction[]; resolve: (id: string | null) => void } | null>(null);
+	docsOpen = $state(false);
+	/** the page of the Documentation shown, and the section it was asked to scroll to */
+	docsAt = $state<{ page: DocsPage; anchor?: string; at: number }>({ page: 'guide', at: 0 });
 	/** where updating Oxygen stands (hosts that update) */
 	update = $state<UpdateState>({ state: 'idle' });
 	/** the user asked to check: say how it ended, even when there's nothing new */
@@ -54,7 +71,9 @@ export class Workspace {
 	frameRequest = $state(0);
 	/** asks the viewport for a screenshot (to the clipboard, or saved too) or a GIF (from now, or from the start) */
 	captureRequest = $state<{ kind: 'copy' | 'save' | 'gif' | 'gifStart' | 'video' | 'videoStart'; at: number } | null>(null);
-	/** Panel the UI asks the shell to reveal (outliner → curves, problems → inspector) */
+	/** the file the Vibrant Visuals panel is asked to fold open (the file browser, for a file it edits) */
+	vvSection = $state<{ id: 'set' | 'grading' | 'lighting'; at: number } | null>(null);
+	/** Panel the UI asks the shell to reveal (problems → inspector, the file browser → Vibrant Visuals) */
 	reveal = $state<{ panel: string; at: number } | null>(null);
 	/** Panel the UI asks the shell to close (View menu) */
 	conceal = $state<{ panel: string; at: number } | null>(null);
@@ -64,6 +83,8 @@ export class Workspace {
 	suspended = $state(false);
 	/** Layout preset the UI asks the shell to apply */
 	layoutRequest = $state<{ name: LayoutName; at: number } | null>(null);
+	/** the preset the window was last set to (the top bar names it; moving panels afterwards keeps the name) */
+	layoutName = $state<LayoutName>('editor');
 	/** bumped when a resource pack is opened or an image is imported: textures resolve again */
 	packVersion = $state(0);
 	/**
@@ -109,11 +130,21 @@ export class Workspace {
 	}
 
 	/** Restart (or reload) into the update, after asking when there's unsaved work */
-	installUpdate(): void {
+	async installUpdate(): Promise<void> {
 		if (!this.host.updates) return;
 		const dirty = this.sessions.filter((s) => s.dirty).map((s) => s.file.name);
 		const verb = this.host.kind === 'web' ? 'Reload' : 'Restart';
-		if (dirty.length && !confirm(`${dirty.join(', ')} ${dirty.length === 1 ? 'has' : 'have'} unsaved changes, which ${verb.toLowerCase()}ing loses. ${verb} anyway? (Cancel, save, then ${verb.toLowerCase()}.)`)) return;
+		if (dirty.length) {
+			const a = await this.ask({
+				title: `${dirty.length === 1 ? `${dirty[0]} has` : `${dirty.length} effects have`} unsaved changes`,
+				message: `${verb}ing to update loses them. Cancel, save, then ${verb.toLowerCase()}.`,
+				actions: [
+					{ id: 'cancel', label: 'Cancel', kind: 'quiet' },
+					{ id: 'go', label: `${verb} anyway`, kind: 'danger' },
+				],
+			});
+			if (a !== 'go') return;
+		}
 		this.host.updates.install();
 	}
 
@@ -152,6 +183,8 @@ export class Workspace {
 		this.savedPrefs = JSON.stringify(prefs);
 		this.prefs = prefs;
 		this.prefsLoaded = true;
+		const folded = s.inspectorFolded;
+		this.inspectorFolded = folded && typeof folded === 'object' ? Object.fromEntries(Object.entries(folded as Record<string, unknown>).filter(([, v]) => v === true)) as Record<string, boolean> : {};
 		// the kept images (another VS Code editor may have changed them), and the ones too big to keep from this run
 		const kept = readImportedTextures(s.importedTextures);
 		const next = { ...kept };
@@ -238,6 +271,7 @@ export class Workspace {
 		if (section) this.settingsSection = section;
 		this.settingsOpen = true;
 		this.aboutOpen = false;
+		this.docsOpen = false;
 		this.shortcutsOpen = false;
 		this.paletteOpen = false;
 	}
@@ -248,6 +282,46 @@ export class Workspace {
 		this.settingsOpen = false;
 		this.shortcutsOpen = false;
 		this.paletteOpen = false;
+		this.docsOpen = false;
+	}
+
+	/** Fold an Inspector category shut, or open it again */
+	foldCategory(id: string, folded = !this.inspectorFolded[id]): void {
+		const next = { ...this.inspectorFolded };
+		if (folded) next[id] = true;
+		else delete next[id];
+		this.inspectorFolded = next;
+		this.updateSettings({ inspectorFolded: Object.keys(next).length ? next : undefined });
+	}
+
+	/** Ask something in Oxygen's own window. Resolves with the chosen action's id, or null when it was dismissed. */
+	ask(q: { title: string; message?: string; actions: AskAction[] }): Promise<string | null> {
+		return new Promise((resolve) => {
+			this.question?.resolve(null);
+			this.question = {
+				...q,
+				resolve: (id) => {
+					this.question = null;
+					resolve(id);
+				},
+			};
+		});
+	}
+
+	/** Open the Documentation at a page (`guide`) or a section of one (`guide#the-scene`, or page and anchor apart) */
+	openDocs(where: string = 'guide', anchor?: string): void {
+		const [page, hash] = where.split('#');
+		this.docsAt = { page: (['guide', 'molang', 'accuracy'] as const).find((p) => p === page) ?? 'guide', anchor: anchor ?? (hash || undefined), at: Date.now() };
+		this.docsOpen = true;
+		this.settingsOpen = false;
+		this.aboutOpen = false;
+		this.shortcutsOpen = false;
+		this.paletteOpen = false;
+	}
+
+	/** Set the window to a layout preset */
+	applyLayout(name: LayoutName): void {
+		this.layoutRequest = { name, at: Date.now() };
 	}
 
 	/** How a new effect's preview starts */
@@ -286,13 +360,20 @@ export class Workspace {
 		return this.sessions.find((s) => s.id === this.activeId) ?? null;
 	}
 
-	open(file: OpenedFile): EffectSession {
+	/** `preview`: for a look, in a tab the next look takes over (see EffectSession.preview) */
+	open(file: OpenedFile, { preview = false }: { preview?: boolean } = {}): EffectSession {
 		const existing = file.file.id ? this.sessions.find((s) => s.file.id === file.file.id) : undefined;
 		if (existing) {
 			this.activeId = existing.id;
+			if (!preview) existing.preview = false;
 			return existing;
 		}
 		const s = new EffectSession(file.text, file.file, { findChild: (id) => this.findEffectJson(id), defaults: this.previewDefaults() });
+		s.preview = preview;
+		// work on it makes it stay
+		s.doc.onChange((c) => {
+			if (c.origin !== 'external') s.preview = false;
+		});
 		if (this.host.onDocumentChange) {
 			s.doc.onChange((c) => {
 				if (c.origin !== 'external') this.host.onDocumentChange!(s.file, { edits: c.edits, label: c.label }, s.doc.text);
@@ -309,7 +390,12 @@ export class Workspace {
 				other.restart();
 			}
 		});
-		this.sessions.push(s);
+		// a look takes the tab of the look before it (never one with changes: those stay)
+		const peek = preview ? this.sessions.findIndex((x) => x.preview) : -1;
+		if (peek >= 0) {
+			this.sessions[peek].dispose();
+			this.sessions.splice(peek, 1, s);
+		} else this.sessions.push(s);
 		this.updateParentInputs();
 		this.activeId = s.id;
 		void this.loadPackVisuals(s);
@@ -378,22 +464,36 @@ export class Workspace {
 	async loadPackVisuals(s: import('./session.svelte').EffectSession): Promise<void> {
 		const read = this.host.readPackText;
 		if (!read) return;
+		const texts: Record<string, string> = {};
 		const json = async (path: string) => {
 			const text = await read.call(this.host, path, s.file).catch(() => null);
 			if (!text) return null;
 			// jsonc-parser salvages what it can from anything: a file that isn't JSON counts as missing
 			const errors: ParseError[] = [];
 			const value = parseJsonc(text, errors, { allowTrailingComma: true });
-			return errors.length || !value || typeof value !== 'object' ? null : value;
+			if (errors.length || !value || typeof value !== 'object') return null;
+			texts[path] = text;
+			return value;
 		};
+		void read
+			.call(this.host, 'materials/particles.material', s.file)
+			.catch(() => null)
+			.then((text) => (s.packMaterials = materialParents(text)));
 		const [lighting, grading, set, manifest] = await Promise.all([
 			json('lighting/global.json'),
 			json('color_grading/color_grading.json'),
 			s.def?.texture ? json(`${s.def.texture}.texture_set.json`) : Promise.resolve(null),
 			json('manifest.json'),
 		]);
-		if (lighting) s.vvLighting = parseLighting(lighting);
-		if (grading) s.vvGrading = parseGrading(grading);
+		// what was changed in the Vibrant Visuals panel and isn't saved stays as it is
+		if (!s.lightingEdits.length) {
+			if (lighting) s.vvLighting = parseLighting(lighting);
+			s.vvFiles = { ...s.vvFiles, lighting: texts['lighting/global.json'] ?? null };
+		}
+		if (!s.gradingEdits.length) {
+			if (grading) s.vvGrading = parseGrading(grading);
+			s.vvFiles = { ...s.vvFiles, grading: texts['color_grading/color_grading.json'] ?? null };
+		}
 		s.textureSet = set ? parseTextureSet(set) : null;
 		s.textureSetUnsaved = false;
 		// a resource pack without the pbr capability turns Vibrant Visuals off in-game while it's active (t65)
@@ -423,6 +523,19 @@ export class Workspace {
 	async openPack(): Promise<void> {
 		const name = await this.host.openPack?.().catch(() => null);
 		if (!name) return;
+		this.packChanged();
+		this.say(`Opened ${name}. Textures and child effects now come from it.`);
+	}
+
+	/** Let go of the opened pack */
+	async closePack(): Promise<void> {
+		if (!this.host.closePack) return;
+		await this.host.closePack().catch(() => {});
+		this.packChanged();
+	}
+
+	/** Another pack, or none: everything read from it is read again */
+	private packChanged(): void {
 		this.packVersion++;
 		this.effectCache.clear();
 		this.hostParents.clear();
@@ -432,7 +545,6 @@ export class Workspace {
 			void this.loadPackVisuals(s);
 		}
 		this.updateParentInputs();
-		this.say(`Opened ${name}. Textures and child effects now come from it.`);
 	}
 
 	async openFiles(): Promise<void> {
@@ -445,6 +557,7 @@ export class Workspace {
 		try {
 			const file: FileRef | null = await this.host.save(session.file, session.doc.text);
 			session.markSaved(file ?? undefined);
+			session.preview = false;
 			if (file) this.openFilesChanged();
 			this.say(`Saved ${session.file.name}${this.host.savedNote?.(session.file) ?? ''}`, 'info', { path: this.host.filePath?.(session.file) });
 		} catch (e) {
@@ -460,6 +573,7 @@ export class Workspace {
 			const file = await this.host.saveAs(session.file, session.doc.text);
 			if (!file) return;
 			session.markSaved(file);
+			session.preview = false;
 			this.openFilesChanged();
 			this.say(`Saved ${session.file.name}${this.host.savedNote?.(session.file) ?? ''}`, 'info', { path: this.host.filePath?.(session.file) });
 		} catch (e) {

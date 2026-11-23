@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, watch, writeFileSync, type FSWatcher } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { ConnectServer, deployHelper, deployPackDetailed, entryPath, findInstalls, folderInstall, installPaths, latestContentLog, parseContentLog, particleSpawnCommand, readLogSince, readPack, pathsInstall, scriptSpawnCommand, type DeployPaths, type GameInstall } from '@oxygen/gamelink';
 import { parentInputsFor, spawnsOf, type EffectSpawns } from '@oxygen/effect';
 import type { DesktopFile, DesktopGameStatus, DesktopLogEntry } from './api';
@@ -21,6 +21,19 @@ function loadSettings() {
 		settings = {};
 	}
 }
+/**
+ * Where each kind of file dialog was last used (a pack, particle files, an image), so the next one starts there
+ * instead of wherever the system last had any dialog.
+ */
+function dialogDir(kind: 'pack' | 'files' | 'image'): string | undefined {
+	const dir = (settings.dialogDirs as Record<string, string> | undefined)?.[kind];
+	return dir && existsSync(dir) ? dir : undefined;
+}
+function rememberDialogDir(kind: 'pack' | 'files' | 'image', dir: string): void {
+	settings.dialogDirs = { ...((settings.dialogDirs as Record<string, string> | undefined) ?? {}), [kind]: dir };
+	storeSettings();
+}
+
 function storeSettings() {
 	try {
 		writeFileSync(settingsFile(), JSON.stringify(settings, null, '\t'));
@@ -233,15 +246,20 @@ const VANILLA_TEXTURES: Record<string, string> = {
 
 function registerIpc() {
 	ipcMain.handle('openFiles', async () => {
-		const r = await dialog.showOpenDialog(win!, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Particle effects', extensions: ['json'] }] });
-		return r.canceled ? [] : r.filePaths.map(readDesktopFile);
+		const r = await dialog.showOpenDialog(win!, { defaultPath: dialogDir('files'), properties: ['openFile', 'multiSelections'], filters: [{ name: 'Particle effects', extensions: ['json'] }] });
+		if (r.canceled || !r.filePaths.length) return [];
+		rememberDialogDir('files', dirname(r.filePaths[0]));
+		return r.filePaths.map(readDesktopFile);
 	});
 	ipcMain.handle('save', async (_e, path: string | null, name: string, text: string) => {
 		let target = path;
 		if (!target) {
-			const r = await dialog.showSaveDialog(win!, { defaultPath: name, filters: [{ name: 'Particle effects', extensions: ['json'] }] });
+			// a new effect goes where particle files were last opened or saved; else into the open pack's particles
+			const into = dialogDir('files') ?? (currentPack && existsSync(join(currentPack, 'particles')) ? join(currentPack, 'particles') : undefined);
+			const r = await dialog.showSaveDialog(win!, { defaultPath: into ? join(into, name) : name, filters: [{ name: 'Particle effects', extensions: ['json'] }] });
 			if (r.canceled || !r.filePath) return null;
 			target = r.filePath;
+			rememberDialogDir('files', dirname(target));
 		}
 		lastText.set(target, text);
 		writeFileSync(target, text);
@@ -249,16 +267,22 @@ function registerIpc() {
 		return { path: target, name: basename(target) };
 	});
 	ipcMain.handle('openPack', async () => {
-		const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory'], title: 'Open a resource pack folder' });
+		// starts in the folder the last pack was picked from, with that pack there to pick again or its neighbour
+		const r = await dialog.showOpenDialog(win!, { defaultPath: dialogDir('pack') ?? (currentPack ? dirname(currentPack) : undefined), properties: ['openDirectory'], title: 'Open a resource pack folder' });
 		if (r.canceled || !r.filePaths[0]) return null;
 		currentPack = r.filePaths[0];
+		rememberDialogDir('pack', dirname(currentPack));
 		effectIndex.delete(currentPack);
+		// the pack is there again next time, like the open files
+		settings.pack = currentPack;
+		storeSettings();
 		return currentPack;
 	});
 	ipcMain.handle('pickImage', async () => {
-		const r = await dialog.showOpenDialog(win!, { properties: ['openFile'], title: 'Import a texture image', filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }] });
+		const r = await dialog.showOpenDialog(win!, { defaultPath: dialogDir('image'), properties: ['openFile'], title: 'Import a texture image', filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }] });
 		const path = r.filePaths[0];
 		if (r.canceled || !path) return null;
+		rememberDialogDir('image', dirname(path));
 		return { name: basename(path), base64: readFileSync(path).toString('base64') };
 	});
 	ipcMain.handle('readTexture', (_e, file: string | null, texture: string) => {
@@ -315,10 +339,19 @@ function registerIpc() {
 	ipcMain.handle('writePackText', (_e, file: string | null, path: string, text: string) => {
 		const root = packRoot(file);
 		if (!root) return false;
+		// lighting/ or color_grading/ may not be in the pack yet
+		mkdirSync(dirname(join(root, path)), { recursive: true });
 		writeFileSync(join(root, path), text);
 		return true;
 	});
 	ipcMain.handle('findEffect', (_e, file: string | null, identifier: string) => findEffect(packRoot(file), identifier));
+	ipcMain.handle('effectIds', (_e, file: string | null) => {
+		const root = packRoot(file);
+		if (!root) return [];
+		// looking any identifier up reads the pack's particles once
+		effectPath(root, '');
+		return [...(effectIndex.get(root)?.keys() ?? [])].sort();
+	});
 	ipcMain.handle('parentInputs', (_e, file: string | null, identifier: string) => parentInputs(packRoot(file), identifier));
 	ipcMain.handle('openEffect', (_e, file: string | null, identifier: string): DesktopFile | null => {
 		const root = packRoot(file);
@@ -351,6 +384,46 @@ function registerIpc() {
 	});
 	ipcMain.handle('recent', () => ((settings.recent as string[]) ?? []).filter((p) => existsSync(p)).map((path) => ({ path, name: basename(path), folder: dirname(path) })));
 	ipcMain.handle('openPath', (_e, path: string) => (existsSync(path) ? readDesktopFile(path) : null));
+	// the file browser: the folders of a pack Oxygen has a use for, and its manifest
+	ipcMain.handle('listPack', () => {
+		// the pack that was opened, never one guessed from an open file
+		const root = currentPack;
+		if (!root || !existsSync(root)) return null;
+		const files: string[] = [];
+		const walk = (dir: string, at: string, depth: number) => {
+			if (depth > 12 || files.length > 50_000) return;
+			let entries;
+			try {
+				entries = readdirSync(dir, { withFileTypes: true });
+			} catch {
+				return;
+			}
+			for (const e of entries) {
+				if (e.name.startsWith('.')) continue;
+				if (e.isDirectory()) walk(join(dir, e.name), `${at}${e.name}/`, depth + 1);
+				else if (e.isFile()) files.push(`${at}${e.name}`);
+			}
+		};
+		for (const d of ['particles', 'textures', 'lighting', 'color_grading']) if (existsSync(join(root, d))) walk(join(root, d), `${d}/`, 0);
+		if (existsSync(join(root, 'manifest.json'))) files.push('manifest.json');
+		// what each particle file calls its effect, read again (a file saved since may say something else)
+		effectIndex.delete(root);
+		effectPath(root, '');
+		const identifiers: Record<string, string> = {};
+		for (const [id, path] of effectIndex.get(root) ?? []) identifiers[relative(root, path).replace(/\\/g, '/')] = id;
+		return { name: basename(root), root, files, identifiers };
+	});
+	ipcMain.handle('closePack', () => {
+		currentPack = null;
+		delete settings.pack;
+		storeSettings();
+	});
+	ipcMain.handle('openPackFile', (_e, path: string) => {
+		const root = currentPack;
+		const full = root ? resolve(root, path) : null;
+		// only what's inside the pack
+		return full && root && full.startsWith(resolve(root)) && existsSync(full) ? readDesktopFile(full) : null;
+	});
 	ipcMain.on('openSet', (_e, paths: string[]) => {
 		settings.openFiles = paths;
 		storeSettings();
@@ -507,6 +580,7 @@ else {
 	});
 	app.whenReady().then(() => {
 		loadSettings();
+		if (typeof settings.pack === 'string' && existsSync(settings.pack)) currentPack = settings.pack;
 		// the deploy target comes from the settings
 		deployTo = null;
 		registerIpc();

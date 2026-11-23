@@ -54,7 +54,7 @@
 
 <svelte:window onkeydown={(e) => workspace.aboutOpen && e.key === 'Escape' && close()} />
 
-{#snippet inline(parts: Inline[])}{#each parts as p, i (i)}{#if p.kind === 'code'}<code>{p.text}</code>{:else if p.kind === 'bold'}<strong>{p.text}</strong>{:else if p.kind === 'link'}<a href={href(p.href)} target="_blank" rel="noreferrer">{p.text}</a>{:else}{p.text}{/if}{/each}{/snippet}
+{#snippet inline(parts: Inline[])}{#each parts as p, i (i)}{#if p.kind === 'code'}<code>{p.text}</code>{:else if p.kind === 'bold'}<strong>{p.text}</strong>{:else if p.kind === 'italic'}<em>{p.text}</em>{:else if p.kind === 'link'}<a href={href(p.href)} target="_blank" rel="noreferrer">{p.text}</a>{:else}{p.text}{/if}{/each}{/snippet}
 
 {#snippet facts(list: Fact[])}
 	<dl>
@@ -103,8 +103,8 @@
 				<div class="links">
 					<a class="link" href={WEBSITE} target="_blank" rel="noreferrer">Web app</a>
 					<a class="link" href={REPO} target="_blank" rel="noreferrer">Source code</a>
-					<a class="link" href={`${REPO}/blob/main/docs/guide.md`} target="_blank" rel="noreferrer">Guide</a>
-					<a class="link" href={`${REPO}/blob/main/docs/accuracy.md`} target="_blank" rel="noreferrer">How it matches the game</a>
+					<button class="link" onclick={() => workspace.openDocs('guide')}>Documentation</button>
+					<button class="link" onclick={() => workspace.openDocs('accuracy')}>How it matches the game</button>
 					<button class="link" onclick={() => (workspace.aboutSection = 'agents')}>For coding agents (MCP)</button>
 					<a class="link" href={`${REPO}/issues/new`} target="_blank" rel="noreferrer">Report a problem</a>
 					<a class="link" href={DISCORD} target="_blank" rel="noreferrer">Discord</a>
@@ -126,7 +126,7 @@
 						{#each r.blocks as b, k (k)}
 							{#if b.kind === 'heading'}<h5>{@render inline(b.text)}</h5>
 							{:else if b.kind === 'paragraph'}<p>{@render inline(b.text)}</p>
-							{:else}<ul>{#each b.items as item, j (j)}<li>{@render inline(item)}</li>{/each}</ul>{/if}
+							{:else if b.kind === 'list'}<ul>{#each b.items as item, j (j)}<li>{@render inline(item)}</li>{/each}</ul>{/if}
 						{/each}
 					</details>
 				{/each}
@@ -145,7 +145,7 @@
 			{:else if section === 'engine'}
 				<p class="lede">The preview runs Oxygen’s own forks of Snowstorm’s engine and Molang interpreter, changed behaviour by behaviour to match measurements made in the game.</p>
 				{@render facts(engine)}
-				<p class="small"><a href={`${REPO}/blob/main/docs/accuracy.md`} target="_blank" rel="noreferrer">What was measured, and what's still approximate</a></p>
+				<p class="small"><button class="textlink" onclick={() => workspace.openDocs('accuracy')}>What was measured, and what’s still approximate</button></p>
 			{:else if section === 'system'}
 				<p class="lede">Where this Oxygen runs. Copy it into a bug report.</p>
 				{#if system}{@render facts(system)}{:else}<p class="small">Looking…</p>{/if}
@@ -339,8 +339,17 @@
 	.small {
 		font-size: 11.5px;
 	}
-	a {
+	a,
+	.textlink {
 		color: var(--ox-lox);
+	}
+	.textlink {
+		padding: 0;
+		border: none;
+		background: none;
+		font: inherit;
+		text-decoration: underline;
+		cursor: pointer;
 	}
 	.release {
 		border: 1px solid var(--ox-rule);

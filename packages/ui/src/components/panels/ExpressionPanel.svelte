@@ -3,6 +3,7 @@
 	import { molangContextFor, orderOf } from '../../lib/field-context';
 	import { joinPath, PHASE_NAME, PHASE_VAR } from '../../lib/molang-text';
 	import MolangInput from '../fields/MolangInput.svelte';
+	import { tip } from '../../lib/tip';
 	import ProgramView from './ProgramView.svelte';
 	import { extractToVariable, moveStatements, prettyMolang } from '@oxygen/lang';
 	import { componentInsertionIndex } from '@oxygen/format';
@@ -137,7 +138,7 @@
 			<span class="phase">{PHASE_NAME[first.phase]}</span>
 			<span class="title">{target.kind === 'vector' ? first.label.replace(/ [XYZWRGBAUVH]$/, '') : first.label}</span>
 			<span class="order ox-num">step {orderOf(session, first.path) ?? '–'}</span>
-			{#if target.kind === 'vector'}<span class="hint">Evaluated {refs.map((_, i) => AXES[i]).join(' → ')}; each axis sees variables the previous one set.</span>{/if}
+			{#if target.kind === 'vector'}<span class="hint" use:tip={'Each axis sees variables the one before it set'}>{refs.map((_, i) => AXES[i]).join(' → ')}</span>{/if}
 		</header>
 		<div class="editors">
 			{#each refs as ref, i (ref.path)}
@@ -187,11 +188,8 @@
 				{#if extractError}<span class="err">{extractError}</span>{/if}
 			</div>
 		{/if}
-		<footer>
-			<span>Select part of an expression to compute it once as a variable, or whole statements to move them to another phase. F2 renames a variable everywhere, Shift+F12 lists its uses. Shift+Alt+F formats, Ctrl+/ comments (kept in the file's oxygen block, which the game ignores).</span>
-		</footer>
 	{:else}
-		<div class="empty">Select a Molang field in the Inspector to edit it here with more room.</div>
+		<div class="empty">Select a Molang field in the Inspector.</div>
 	{/if}
 </div>
 
@@ -321,12 +319,6 @@
 	.extract .err {
 		color: var(--ox-error);
 		font-size: 11.5px;
-	}
-	footer {
-		padding: 4px 10px;
-		color: var(--ox-text-dim);
-		font-size: 11.5px;
-		border-top: 1px solid var(--ox-rule);
 	}
 	.empty {
 		margin: auto;

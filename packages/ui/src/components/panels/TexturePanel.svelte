@@ -608,14 +608,7 @@
 		></canvas>
 		{#if loadNote}<p class="note">{loadNote}</p>{/if}
 	</div>
-	<p class="foot">
-		{#if mode === 'uv'}
-			{#if rect}Drag the blue area to move it, its corner to resize; values snap to texture units.{:else if uv}This texture area is driven by Molang, so edit it in the Inspector.{:else}This effect draws the whole texture.{/if}
-			Arrow keys nudge it (Shift resizes). Pink outlines are where live particles sample. Middle, right or Space+drag pans; the wheel zooms.
-		{:else}
-			Painted pixels show in the preview right away; Save texture writes the PNG to the pack. Ctrl+Z undoes strokes; B, E, G and I pick the tool.
-		{/if}
-	</p>
+	{#if mode === 'uv' && !rect}<p class="foot">{uv ? 'This texture area is set by Molang: edit it in the Inspector.' : 'The effect draws the whole texture.'}</p>{/if}
 </div>
 
 <style>

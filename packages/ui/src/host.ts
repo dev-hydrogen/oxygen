@@ -38,6 +38,19 @@ export interface Host {
 	writePackText?(path: string, file: FileRef, text: string): Promise<boolean>;
 	/** Write an edited texture (PNG) back to the pack. Returns false when the host can't (the UI then downloads it). */
 	saveTexture?(texture: string, file: FileRef, png: Blob): Promise<boolean>;
+	/**
+	 * The pack the file browser shows: the folder opened with openPack, and only that (an effect opened by
+	 * itself brings no pack with it). Its files are the ones Oxygen has a use for: everything under `particles`,
+	 * `textures`, `lighting` and `color_grading`, and the manifest. Null with no pack opened. Hosts with a file
+	 * browser of their own leave it out.
+	 */
+	listPack?(): Promise<PackListing | null>;
+	/** Read one of the opened pack's particle files, to open as a document */
+	openPackFile?(path: string): Promise<OpenedFile | null>;
+	/** Let go of the opened pack: the file browser empties, and effects in no pack lose its textures */
+	closePack?(): Promise<void>;
+	/** The identifiers of the effects in `file`'s pack (the opened pack when it's in none): what findEffect can find there */
+	effectIds?(file: FileRef | null): Promise<string[]>;
 	/** Find another effect's JSON text by identifier (pack, bundled examples); used for child effects in events */
 	findEffect?(identifier: string): Promise<string | null>;
 	/**
@@ -151,6 +164,17 @@ export interface GameLink {
 	spawn(identifier: string, variables?: Record<string, number | number[]>, offset?: [number, number, number]): Promise<string>;
 	/** Ask the game to reload packs (`/reload all`) */
 	reload(): Promise<string>;
+}
+
+/** A resource pack as the file browser lists it */
+export interface PackListing {
+	name: string;
+	/** where it is on disk, when the host knows (the desktop app): for Show in folder */
+	root?: string;
+	/** paths from the pack's root, with forward slashes (`textures/particle/spark.png`) */
+	files: string[];
+	/** the identifier each particle file declares, by its path: what an effect is called everywhere else */
+	identifiers?: Record<string, string>;
 }
 
 export interface FileRef {

@@ -6,6 +6,8 @@
 	import { analyze, parse } from 'molangjs';
 	import MolangInput from '../fields/MolangInput.svelte';
 	import Select from '../fields/Select.svelte';
+	import Hint from '../fields/Hint.svelte';
+	import { tip } from '../../lib/tip';
 	import EventNode from './EventNode.svelte';
 
 	interface Props {
@@ -116,9 +118,8 @@
 	{/if}
 	{#if node.expression !== undefined}
 		<div class="part" class:skipped={grouped}>
-			<div class="ph"><span>Expression</span><button class="x" aria-label="Remove expression" onclick={() => session.doc.remove(joinPath(path, 'expression'))}>×</button></div>
+			<div class="ph"><span>Expression</span>{#if pe && !grouped}<span class="hint">runs after the spawn</span>{/if}<button class="x" aria-label="Remove expression" onclick={() => session.doc.remove(joinPath(path, 'expression'))}>×</button></div>
 			<MolangInput {session} path={joinPath(path, 'expression')} label="Event expression" multiline placeholder="v.flag = 1;" context={molangContextFor(session, joinPath(path, 'expression'))} />
-			<p class="note">Writes to this emitter's variables when the event fires{pe && !grouped ? ', after the spawn above' : ''}.</p>
 		</div>
 	{/if}
 	{#if pe}
@@ -131,39 +132,38 @@
 					value={String(pe.type ?? 'emitter')}
 					label="Spawn type"
 					options={[
-						{ value: 'emitter', label: 'Emitter at this point', help: 'A new emitter, independent of this one' },
-						{ value: 'emitter_bound', label: 'Emitter bound to this one', help: 'Follows this emitter; it keeps its own lifetime when this one ends' },
-						{ value: 'particle', label: 'Single particle', help: 'One particle of the child effect. With /particle or a script, in-game it appears at the world origin, not here' },
-						{ value: 'particle_with_velocity', label: 'Single particle with velocity', help: "Like Single particle, with the firing particle's velocity. In-game it also appears at the world origin" },
+						{ value: 'emitter', label: 'Emitter at this point', help: 'emitter: a new emitter, independent of this one' },
+						{ value: 'emitter_bound', label: 'Emitter bound to this one', help: 'emitter_bound: follows this emitter; it keeps its own lifetime when this one ends' },
+						{ value: 'particle', label: 'Single particle', help: 'particle: one particle of the child effect. With /particle or a script, in-game it appears at the world origin, not here' },
+						{ value: 'particle_with_velocity', label: 'Single particle with velocity', help: "particle_with_velocity: like Single particle, with the firing particle's velocity. In-game it also appears at the world origin" },
 					]}
 					onchange={(v) => session.doc.set(joinPath(path, 'particle_effect', 'type'), v, 'Edit event effect')}
 				/>
 			</div>
 			<div class="row top">
-				<span>Pre-effect</span>
+				<span class="withhint">Pre-effect <Hint label="About the pre-effect expression" where="events › particle_effect › pre_effect_expression" text="Runs in the child before its `creation_expression`. Temps set in earlier steps of this event are readable here; this step’s own expression runs after the spawn." doc="guide#events" /></span>
 				<MolangInput {session} path={joinPath(path, 'particle_effect', 'pre_effect_expression')} label="Child pre-effect expression" multiline placeholder="v.size = t.size;" context={molangContextFor(session, joinPath(path, 'particle_effect', 'pre_effect_expression'))} />
 			</div>
-			<p class="note">Runs in the child before its creation_expression. Temps are global, so values set in earlier steps of this event are readable here; this step's own expression runs after the spawn.</p>
-			{#if handoff?.atOrigin && !grouped}<p class="warnline">This event fires when a particle is created; for effects spawned with /particle or a script, what it spawns lands in-game at the particle's offset from its emitter taken as a world position (near the world origin), not at the particle. Particle timeline and expiration events spawn at the particle.</p>{/if}
+			{#if handoff?.atOrigin && !grouped}<p class="warnline">Fired on particle creation: with /particle or a script, the game spawns this at the particle’s offset from its emitter taken as a world position, not at the particle. <Hint label="About where it spawns" text="Particle timeline and expiration events spawn at the particle. Only creation events land near the world origin." doc="accuracy#events" /></p>{/if}
 			{#if handoff && (handoff.temps.length || handoff.needs?.length || (handoff.id && !handoff.found))}
 				<div class="handoff">
 					{#each handoff.temps as t (t.name)}
 						<p>
 							<code class="ox-code tmp">{short(t.name)}</code>
-							{#if t.from}<span>← set in {t.from}: the child gets this event's value (temp leak)</span>
-							{:else if t.later}<span class="warn">is set by this step's expression, but that runs after the spawn: the child gets the value from the time before.</span>
-							{:else}<span class="warn">isn't set earlier in this event. Temps are global, so the child reads whatever any expression last left there.</span>{/if}
+							{#if t.from}<span>← set in {t.from}</span>
+							{:else if t.later}<span class="warn">is set by this step’s expression, which runs after the spawn</span>
+							{:else}<span class="warn">isn’t set earlier in this event: the child reads whatever last set it</span>{/if}
 						</p>
 					{/each}
 					{#if handoff.needs}
 						{#each handoff.needs as n (n.name)}
 							<p>
 								<span class="dim">child needs</span> <code class="ox-code var">{short(n.name)}</code>
-								{#if n.set}<span class="ok">set here</span>{:else if n.optional}<span class="dim">not set (optional: the child reads it with ??)</span>{:else}<span class="warn">not set here or by the child, so its reads abort</span>{/if}
+								{#if n.set}<span class="ok">set here</span>{:else if n.optional}<span class="dim">not set (read with ??)</span>{:else}<span class="warn">not set: its reads abort</span>{/if}
 							</p>
 						{/each}
 					{:else if handoff.id}
-						<p class="dim">{handoff.id} isn't in this pack, so what it needs is unknown.</p>
+						<p class="dim">{handoff.id} isn’t in this pack.</p>
 					{/if}
 				</div>
 			{/if}
@@ -177,7 +177,7 @@
 	{/if}
 	{#if seq}
 		<div class="part">
-			<div class="ph"><span>Steps</span><span class="hint">run one after another, top to bottom</span><button class="x" aria-label="Remove steps" onclick={() => session.doc.remove(joinPath(path, 'sequence'))}>×</button></div>
+			<div class="ph"><span use:tip={{ where: 'events › sequence', text: 'Run one after another, top to bottom.' }}>Steps</span><button class="x" aria-label="Remove steps" onclick={() => session.doc.remove(joinPath(path, 'sequence'))}>×</button></div>
 			{#each seq as _, i (i)}
 				<div class="child">
 					<div class="ch"><span class="ox-num">Step {i + 1}</span><button class="x" aria-label="Remove step {i + 1}" onclick={() => session.doc.remove(joinPath(path, 'sequence', i))}>×</button></div>
@@ -189,7 +189,7 @@
 	{/if}
 	{#if rnd}
 		<div class="part">
-			<div class="ph"><span>Random choice</span><span class="hint">picks one option by weight</span><button class="x" aria-label="Remove random choice" onclick={() => session.doc.remove(joinPath(path, 'randomize'))}>×</button></div>
+			<div class="ph"><span use:tip={{ where: 'events › randomize', text: 'Picks one option by weight.' }}>Random choice</span><button class="x" aria-label="Remove random choice" onclick={() => session.doc.remove(joinPath(path, 'randomize'))}>×</button></div>
 			{#each rnd as opt, i (i)}
 				<div class="child">
 					<div class="ch">
@@ -301,6 +301,11 @@
 	.row.top > span {
 		line-height: 22px;
 	}
+	.withhint {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
 	input {
 		height: 22px;
 		background: var(--ox-input);
@@ -327,11 +332,6 @@
 	}
 	.x:hover {
 		color: var(--ox-frost);
-	}
-	.note {
-		margin: 0;
-		color: var(--ox-text-dim);
-		font-size: 11.5px;
 	}
 	.link {
 		align-self: flex-start;

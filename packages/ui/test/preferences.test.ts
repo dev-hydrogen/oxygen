@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { changedPreferences, DEFAULT_PREFERENCES, readPreferences } from '../src/state/preferences';
 import { getPref, isModified, searchSettings, SETTINGS, setPref } from '../src/lib/settings-schema';
-import { parseMarkdown, releases } from '../src/lib/markdown';
-import { readFileSync } from 'node:fs';
+import { parseMarkdown, releases, slug } from '../src/lib/markdown';
+import { readdirSync, readFileSync } from 'node:fs';
 
 describe('preferences', () => {
 	it('start at the defaults when nothing is stored', () => {
@@ -81,5 +81,44 @@ describe('the changelog', () => {
 		// the pictures under items are for GitHub: the app's text has none of their HTML
 		expect(JSON.stringify(r[0].blocks)).not.toContain('<img');
 		expect(parseMarkdown('- An item\n  <br><img src="x.png" width="300">\n- Another')).toEqual([{ kind: 'list', items: [[{ kind: 'text', text: 'An item' }], [{ kind: 'text', text: 'Another' }]] }]);
+	});
+
+	it('reads what the Documentation pages use: anchors, italics and tables', () => {
+		const md = '## Effects on an entity\n\nTurn on *Spawned by* (not 2 * 3 * 4).\n\n| Action | How |\n| --- | --- |\n| Play | `Space` |\n| Pan | Shift+drag |\n\nAfter.';
+		const b = parseMarkdown(md);
+		expect(b[0]).toMatchObject({ kind: 'heading', level: 2, id: 'effects-on-an-entity' });
+		expect(b[1]).toEqual({ kind: 'paragraph', text: [{ kind: 'text', text: 'Turn on ' }, { kind: 'italic', text: 'Spawned by' }, { kind: 'text', text: ' (not 2 * 3 * 4).' }] });
+		expect(b[2]).toEqual({
+			kind: 'table',
+			head: [[{ kind: 'text', text: 'Action' }], [{ kind: 'text', text: 'How' }]],
+			rows: [
+				[[{ kind: 'text', text: 'Play' }], [{ kind: 'code', text: 'Space' }]],
+				[[{ kind: 'text', text: 'Pan' }], [{ kind: 'text', text: 'Shift+drag' }]],
+			],
+		});
+		expect(b[3]).toEqual({ kind: 'paragraph', text: [{ kind: 'text', text: 'After.' }] });
+		expect(parseMarkdown('Before.\n\n```\n"color": "a",\n  "x": [0, 255]\n```\n\nAfter.')).toEqual([
+			{ kind: 'paragraph', text: [{ kind: 'text', text: 'Before.' }] },
+			{ kind: 'code', text: '"color": "a",\n  "x": [0, 255]' },
+			{ kind: 'paragraph', text: [{ kind: 'text', text: 'After.' }] },
+		]);
+		expect(slug('Inputs and scenarios (Context)')).toBe('inputs-and-scenarios-context');
+		expect(slug('Testing in Minecraft (desktop app)')).toBe('testing-in-minecraft-desktop-app');
+	});
+
+	it('has every section the hints link to', () => {
+		const ids = (file: string) => parseMarkdown(readFileSync(new URL(`../../../docs/${file}.md`, import.meta.url), 'utf8')).flatMap((b) => (b.kind === 'heading' ? [`${file}#${b.id}`] : []));
+		const known = new Set(['guide', 'molang', 'accuracy'].flatMap(ids));
+		const used = new Set<string>();
+		const read = (dir: URL) => {
+			for (const e of readdirSync(dir, { withFileTypes: true })) {
+				const at = new URL(`${e.name}${e.isDirectory() ? '/' : ''}`, dir);
+				if (e.isDirectory()) read(at);
+				else if (/\.(svelte|ts)$/.test(e.name)) for (const m of readFileSync(at, 'utf8').matchAll(/['"`]((?:guide|molang|accuracy)#[a-z0-9-]+)['"`]/g)) used.add(m[1]);
+			}
+		};
+		read(new URL('../src/', import.meta.url));
+		expect(used.size).toBeGreaterThan(3);
+		expect([...used].filter((u) => !known.has(u))).toEqual([]);
 	});
 });

@@ -3,6 +3,8 @@
 	import { SPAWN_MODES, type SpawnMode } from '../../state/session.svelte';
 	import type { Workspace } from '../../state/workspace.svelte';
 	import { ViewportScene } from '../../viewport/scene';
+	import { MATERIAL_ID } from 'wintersky/render';
+	import { baseMaterial } from '../../lib/materials';
 	import { createMersProvider, createTextureProvider } from '../../lib/textures';
 	import { readMeta, writeMeta } from '@oxygen/format';
 	import { canTurn, sameTarget, type GizmoHit, type Gizmos, type MoveTarget } from '../../viewport/gizmos';
@@ -24,6 +26,17 @@
 	let canvas: HTMLCanvasElement;
 	let wrap: HTMLDivElement;
 	let scene: ViewportScene | null = null;
+
+	// a material that isn't one of the game's four is drawn as the one it inherits from (or is named after)
+	$effect(() => {
+		const s = workspace.active;
+		const name = s?.def?.material;
+		if (!s || !name) return;
+		const id = MATERIAL_ID[baseMaterial(name, s.packMaterials)] ?? 0;
+		if (MATERIAL_ID[name] === id) return;
+		MATERIAL_ID[name] = id;
+		scene?.particles.refreshMaterials();
+	});
 	let fps = $state(0);
 	let downAt: [number, number] | null = null;
 	let pressOnHandle = false;
@@ -648,7 +661,6 @@
 						{#each GIZMOS as g (g.key)}
 							<button role="menuitemcheckbox" aria-checked={workspace.gizmos[g.key]} class="vitem check" title={g.help} onclick={() => (workspace.gizmos = { ...workspace.gizmos, [g.key]: !workspace.gizmos[g.key] })}><span class="tick">{workspace.gizmos[g.key] ? '✓' : ''}</span>{g.label}</button>
 						{/each}
-						<p class="vnone">Click an emitter, the shape, the kill plane or the entity to inspect it. Click the entity, a locator or a path point to move it; right-click a block for its own menu.</p>
 						<button class="vitem" onclick={() => { showOpen = false; workspace.openSettings('viewport'); }}>Helper limits…</button>
 					</div>
 				{/if}
@@ -669,7 +681,6 @@
 							<p class="vnone">No saved views yet.</p>
 						{/each}
 						<button class="vitem save" onclick={saveView}>Save this view</button>
-						<p class="vnone">Views are stored in the file's oxygen block. Drag orbits around what's under the cursor; right drag looks around (hold {['forward', 'left', 'back', 'right'].map((a) => km.label(`camera.${a}`) ?? '').join(' ')} to fly).</p>
 					</div>
 				{/if}
 			</div>
@@ -682,7 +693,7 @@
 		{/if}
 		{#if session.finished}
 			<div class="ended" class:raised={session.historyRange.to - session.historyRange.from > 0.2}>
-				<span>The effect ended at <span class="ox-num">{session.stats.time.toFixed(2)} s</span>: nothing it spawned is still alive.</span>
+				<span>Ended at <span class="ox-num">{session.stats.time.toFixed(2)} s</span></span>
 				<button class="tool text on" onclick={() => session.togglePlay()}>Replay</button>
 				<button class="tool text" title="Play it again whenever it ends" onclick={() => (session.loopPreview = true)}>Repeat</button>
 			</div>
@@ -697,9 +708,9 @@
 					step="0.01"
 					value={session.stats.time}
 					aria-label="Scrub through the last seconds"
+					title="Go back through the last seconds; playing continues from there"
 					oninput={(e) => session.scrubTo(Number(e.currentTarget.value))}
 				/>
-				<span class="dim">Drag to go back; playing continues from there</span>
 			</div>
 		{/if}
 		{#if recording}

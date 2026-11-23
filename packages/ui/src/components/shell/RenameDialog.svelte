@@ -50,7 +50,7 @@
 	<div class="scrim" onclick={close}></div>
 	<div class="dialog" role="dialog" aria-label="Rename variable">
 		<h3>Rename <span class="ox-code">{from.replace(/^variable\./, 'v.')}</span></h3>
-		<p class="dim">{uses ? `Set in ${uses.writes.length} and read in ${uses.reads.length} field${uses.reads.length === 1 ? '' : 's'}.` : ''} Every use in this effect changes; the spelling of each namespace (v. or variable.) is kept.</p>
+		<p class="dim">{uses ? `Set in ${uses.writes.length} and read in ${uses.reads.length} field${uses.reads.length === 1 ? '' : 's'} of this effect.` : 'Every use in this effect.'}</p>
 		<div class="field">
 			<span class="prefix ox-code">v.</span>
 			<input

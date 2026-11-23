@@ -3,6 +3,11 @@
 	import { sampleField, type FieldSamples } from '../../lib/sampler';
 	import { PHASE_NAME, PHASE_VAR } from '../../lib/molang-text';
 	import { fieldTarget } from '../../lib/field-target';
+	import { tip } from '../../lib/tip';
+
+	/** lines drawn, and particles sampled to choose them from and to shade the spread of */
+	const LINES = 8;
+	const POOL = 300;
 
 	interface Props {
 		workspace: Workspace;
@@ -50,13 +55,35 @@
 		}
 		busy = true;
 		const t = setTimeout(() => {
-			samples = sampleField(s, r.path, 6, seed);
+			samples = sampleField(s, r.path, LINES, seed, 1 / 30, POOL);
 			busy = false;
 		}, 180);
 		return () => clearTimeout(t);
 	});
 
 	const PAD = { l: 44, r: 12, t: 12, b: 26 };
+	/** the plot's scales as last drawn, for reading values under the pointer */
+	let scale: { x0: number; x1: number; y0: number; y1: number } | null = null;
+	/** where the pointer is over the plot: the age there, and the values across the particles at it */
+	let cursor = $state<{ left: number; x: number; text: string } | null>(null);
+	function point(e: PointerEvent) {
+		const data = samples;
+		if (!data || !scale || !data.series.length) return void (cursor = null);
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		const px = e.clientX - r.left;
+		if (px < PAD.l || px > width - PAD.r) return void (cursor = null);
+		const x = scale.x0 + ((px - PAD.l) / (width - PAD.l - PAD.r)) * (scale.x1 - scale.x0);
+		let text: string;
+		if (data.spread?.length) {
+			const b = data.spread.reduce((best, s) => (Math.abs(s.x - x) < Math.abs(best.x - x) ? s : best));
+			text = b.min === b.max ? fmt(b.mid) : `${fmt(b.min)} to ${fmt(b.max)}, median ${fmt(b.mid)}`;
+		} else {
+			const first = data.series[0].points;
+			const p = first.reduce((best, q) => (Math.abs(q[0] - x) < Math.abs(best[0] - x) ? q : best));
+			text = fmt(p[1]);
+		}
+		cursor = { left: px, x, text };
+	}
 	$effect(() => {
 		const cv = canvas;
 		const data = samples;
@@ -67,14 +94,16 @@
 		const ctx = cv.getContext('2d')!;
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		ctx.clearRect(0, 0, width, height);
+		scale = null;
 		if (!data || !data.series.length) return;
 		const css = getComputedStyle(cv);
 		const col = (v: string) => css.getPropertyValue(v).trim() || '#888';
 		const all = data.series.flatMap((s) => s.points);
-		let x0 = Math.min(...all.map((p) => p[0])),
-			x1 = Math.max(...all.map((p) => p[0]));
-		let y0 = Math.min(...all.map((p) => p[1])),
-			y1 = Math.max(...all.map((p) => p[1]));
+		const band = data.spread ?? [];
+		let x0 = Math.min(...all.map((p) => p[0]), ...band.map((b) => b.x)),
+			x1 = Math.max(...all.map((p) => p[0]), ...band.map((b) => b.x));
+		let y0 = Math.min(...all.map((p) => p[1]), ...band.map((b) => b.min)),
+			y1 = Math.max(...all.map((p) => p[1]), ...band.map((b) => b.max));
 		if (x1 - x0 < 1e-6) x1 = x0 + 1;
 		if (y1 - y0 < 1e-6) {
 			y0 -= 0.5;
@@ -83,6 +112,7 @@
 		const pad = (y1 - y0) * 0.08;
 		y0 -= pad;
 		y1 += pad;
+		scale = { x0, x1, y0, y1 };
 		const sx = (x: number) => PAD.l + ((x - x0) / (x1 - x0)) * (width - PAD.l - PAD.r);
 		const sy = (y: number) => PAD.t + (1 - (y - y0) / (y1 - y0)) * (height - PAD.t - PAD.b);
 		ctx.font = `11px ${col('--ox-font-ui')}`;
@@ -100,12 +130,27 @@
 			ctx.fillText(`${fmt(x)}s`, sx(x) - 10, height - 8);
 		}
 		const phase = ref ? col(PHASE_VAR[ref.phase].slice(4, -1)) : col('--ox-lox');
-		data.series.forEach((s, i) => {
-			ctx.strokeStyle = phase;
-			ctx.globalAlpha = i === 0 ? 1 : 0.45;
-			ctx.lineWidth = i === 0 ? 1.8 : 1.2;
+		// every sampled particle's values, as two bands: the whole range, and the middle 80 % of them
+		const fill = (top: (b: (typeof band)[number]) => number, bottom: (b: (typeof band)[number]) => number, alpha: number) => {
+			if (band.length < 2) return;
+			ctx.globalAlpha = alpha;
+			ctx.fillStyle = phase;
 			ctx.beginPath();
-			s.points.forEach(([x, y], k) => (k ? ctx.lineTo(sx(x), sy(y)) : ctx.moveTo(sx(x), sy(y))));
+			band.forEach((b, k) => (k ? ctx.lineTo(sx(b.x), sy(top(b))) : ctx.moveTo(sx(b.x), sy(top(b)))));
+			for (let k = band.length - 1; k >= 0; k--) ctx.lineTo(sx(band[k].x), sy(bottom(band[k])));
+			ctx.closePath();
+			ctx.fill();
+		};
+		fill((b) => b.max, (b) => b.min, 0.1);
+		fill((b) => b.hi, (b) => b.lo, 0.14);
+		// the others first, so the one nearest the median reads on top
+		[...data.series].reverse().forEach((s, k, list) => {
+			const main = k === list.length - 1;
+			ctx.strokeStyle = phase;
+			ctx.globalAlpha = main ? 1 : 0.5;
+			ctx.lineWidth = main ? 1.8 : 1;
+			ctx.beginPath();
+			s.points.forEach(([x, y], j) => (j ? ctx.lineTo(sx(x), sy(y)) : ctx.moveTo(sx(x), sy(y))));
 			ctx.stroke();
 		});
 		ctx.globalAlpha = 1;
@@ -138,11 +183,18 @@
 					{/each}
 				</span>
 			{/if}
-			<span class="dim">over {samples?.axis ?? 'time'}{samples && samples.series.length > 1 ? `, ${samples.series.length} particles with different randoms` : ''}</span>
-			<button class="btn" title="Sample other particles (different randoms)" onclick={() => (seed = Math.floor(Math.random() * 1e6))}>Other particles</button>
+			<span class="dim" use:tip={samples?.spread ? `Shaded: the values of all ${samples.total} sampled particles at each age, and darker the middle 80 % of them. Bright line: the particle nearest the median. Thin lines: ${samples.series.length - 1} others, picked to be as unlike it and each other as they come.` : null}>
+				over {samples?.axis ?? 'time'}{#if samples && samples.total > 1}, {samples.total} particles{/if}
+			</span>
+			<button class="btn" use:tip={'Run the effect again with other random numbers'} onclick={() => (seed = Math.floor(Math.random() * 1e6))}>Resample</button>
 		</header>
-		<div class="plot" bind:clientHeight={height}>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="plot" bind:clientHeight={height} onpointermove={point} onpointerleave={() => (cursor = null)}>
 			<canvas bind:this={canvas} style:width="{width}px" style:height="{height}px" aria-label="Values of {ref.label} over {samples?.axis ?? 'time'}"></canvas>
+			{#if cursor}
+				<div class="cursor" style:left="{cursor.left}px" aria-hidden="true"></div>
+				<span class="readout ox-num" class:flip={cursor.left > width - 220} style:left="{cursor.left}px">{fmt(cursor.x)} s<span class="at">{cursor.text}</span></span>
+			{/if}
 			{#if busy}<span class="busy">Sampling…</span>{/if}
 			{#if constant}<p class="empty">{constant.missing ? `Not in the file: the game uses ${constant.value ?? 'nothing'}.` : `A constant: always ${constant.value}.`} Write Molang to see it change over time.</p>
 			{:else if !ref.expectsValue}<p class="empty">Statements set variables but have no value of their own; select a field that reads them.</p>
@@ -194,6 +246,35 @@
 	}
 	canvas {
 		display: block;
+	}
+	.cursor {
+		position: absolute;
+		top: 12px;
+		bottom: 26px;
+		width: 1px;
+		background: var(--ox-rule-strong);
+		pointer-events: none;
+	}
+	.readout {
+		position: absolute;
+		top: 10px;
+		margin-left: 8px;
+		padding: 1px 6px;
+		border-radius: var(--ox-radius);
+		background: var(--ox-float);
+		border: 1px solid var(--ox-rule-strong);
+		color: var(--ox-haze);
+		font-size: 11.5px;
+		white-space: nowrap;
+		pointer-events: none;
+	}
+	.readout.flip {
+		margin-left: -8px;
+		transform: translateX(-100%);
+	}
+	.readout .at {
+		margin-left: 8px;
+		color: var(--ox-frost);
 	}
 	.busy {
 		position: absolute;

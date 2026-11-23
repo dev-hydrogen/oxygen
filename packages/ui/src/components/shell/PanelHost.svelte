@@ -4,19 +4,22 @@
 
 	/** One dock panel. A panel that throws shows its error instead of taking the whole app down. */
 	interface Props {
-		component: Component<{ workspace: Workspace }>;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		component: Component<any>;
 		workspace: Workspace;
 		title: string;
+		/** what this panel shows of its component (an Inspector category) */
+		props?: Record<string, unknown>;
 	}
 
-	let { component: Panel, workspace, title }: Props = $props();
+	let { component: Panel, workspace, title, props = {} }: Props = $props();
 	// anything inside a panel can reach the workspace (open another panel, show a message)
 	// svelte-ignore state_referenced_locally
 	setContext('oxygen.workspace', workspace);
 </script>
 
 <svelte:boundary onerror={(e) => console.error(`Oxygen: the ${title} panel failed`, e)}>
-	<Panel {workspace} />
+	<Panel {workspace} {...props} />
 	{#snippet failed(error, reset)}
 		<div class="failed" role="alert">
 			<strong>The {title} panel ran into a problem.</strong>

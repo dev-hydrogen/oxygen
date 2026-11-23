@@ -723,7 +723,7 @@
 			{#if type !== 'bezier_chain'}
 				<label class="row"><span>Range</span><MolangInput {session} path={joinPath(base, 'horizontal_range')} label="Curve horizontal range" placeholder="1" context={molangContextFor(session, joinPath(base, 'horizontal_range'))} /></label>
 			{:else}
-				<p class="note">Bezier chains ignore horizontal_range: keys are input values, and the curve holds its end values outside them.</p>
+				<p class="note">No range: a Bezier chain’s keys are input values.</p>
 			{/if}
 		</div>
 		<canvas
@@ -742,10 +742,10 @@
 		></canvas>
 		<p class="legend">
 			<span><span class="dot"></span> on the curve</span>
-			{#if type === 'bezier' || type === 'catmull_rom'}<span><span class="sq"></span> {type === 'bezier' ? 'control point: pulls the curve without it passing through' : 'end node: sets the slope where the curve starts and ends'}</span>{/if}
+			{#if type === 'bezier' || type === 'catmull_rom'}<span><span class="sq"></span> {type === 'bezier' ? 'control point' : 'end node (slope)'}</span>{/if}
 			{#if type === 'bezier_chain'}<span><span class="ring"></span> slope handle</span>{/if}
 			<span><span class="dia"></span> Molang, edited below</span>
-			<span class="dim">Snaps to the grid; Shift drags freely.{type === 'bezier_chain' ? ' Double-click to add a key.' : ''}</span>
+			<span class="dim">Shift: no snap{type === 'bezier_chain' ? '; double-click adds a key' : ''}</span>
 		</p>
 		<div class="nodes">
 			{#if type === 'bezier_chain'}
@@ -801,7 +801,7 @@
 		</div>
 	{:else if session}
 		<div class="empty">
-			<p>Curves turn an input (like particle age) into a value through a graph, written to a variable every update.</p>
+			<p>No curves yet.</p>
 			<button
 				class="primary"
 				onclick={() =>

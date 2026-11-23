@@ -52,9 +52,9 @@ export const DEFAULT_SCENE: SceneSettings = { ground: 'plane', entity: DEFAULT_E
 export type SpawnMode = 'command' | 'script' | 'entity';
 
 export const SPAWN_MODES: { id: SpawnMode; label: string; help: string }[] = [
-	{ id: 'command', label: '/particle', help: 'Spawned by a command: one loop, 1000 live particles' },
-	{ id: 'script', label: 'Script API', help: 'spawnParticle with a variable map: one loop, 1000 live particles' },
-	{ id: 'entity', label: 'Entity', help: 'Attached to an entity: looping emitters loop' },
+	{ id: 'command', label: '/particle', help: 'A command: looping emitters play one loop' },
+	{ id: 'script', label: 'Script API', help: 'spawnParticle with a variable map: looping emitters play one loop' },
+	{ id: 'entity', label: 'Animation', help: 'An entity’s animation or animation controller (its particle_effects): looping emitters loop' },
 ];
 
 let nextId = 1;
@@ -80,6 +80,11 @@ const HISTORY_STEP = 0.1;
 export class EffectSession {
 	readonly id = `fx${nextId++}`;
 	file = $state<FileRef>({ name: 'untitled.particle.json', id: null });
+	/**
+	 * Opened for a look (a single click in the file browser): the next file looked at takes its tab. Editing it,
+	 * saving it or double-clicking it makes it stay.
+	 */
+	preview = $state(false);
 	readonly doc: JsonDocument;
 	/** bumps on every document change (drives derived UI) */
 	version = $state(0);
@@ -140,6 +145,13 @@ export class EffectSession {
 	glowDraft = $state.raw<{ name: string; url: string; blob: Blob } | null>(null);
 	/** the texture set (or glow map) changed in the panel and isn't in the pack yet */
 	textureSetUnsaved = $state(false);
+	/** materials the pack defines in materials/particles.material, each with the one it inherits from */
+	packMaterials = $state.raw<Record<string, string>>({});
+	/** the pack's own color_grading.json and lighting/global.json as text (null: it has none), to write changes into */
+	vvFiles = $state.raw<{ grading: string | null; lighting: string | null }>({ grading: null, lighting: null });
+	/** keys of the grading and the lighting changed in the Vibrant Visuals panel and not saved to the pack yet */
+	gradingEdits = $state.raw<string[]>([]);
+	lightingEdits = $state.raw<string[]>([]);
 	/** which VV inputs came from the pack; `pbr`: its manifest opts into Vibrant Visuals (null: no manifest found) */
 	vvFromPack = $state<{ lighting: boolean; grading: boolean; textureSet: boolean; pbr: boolean | null }>({ lighting: false, grading: false, textureSet: false, pbr: null });
 	/** Texture being painted: shown in the preview instead of the file until saved */

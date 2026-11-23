@@ -173,6 +173,7 @@ export const KEY_COMMANDS: KeyCommand[] = [
 	{ id: 'app.commands', label: 'Commands', group: 'Oxygen', keys: ['Mod+K', 'Mod+Shift+P'], scope: 'app' },
 	{ id: 'app.settings', label: 'Settings', group: 'Oxygen', keys: ['Mod+,'], scope: 'app' },
 	{ id: 'app.shortcuts', label: 'Keyboard shortcuts', group: 'Oxygen', keys: ['?'], scope: 'app' },
+	{ id: 'app.docs', label: 'Documentation', group: 'Oxygen', keys: [], scope: 'app' },
 	{ id: 'app.about', label: 'About Oxygen', group: 'Oxygen', keys: [], scope: 'app' },
 
 	{ id: 'preview.play', label: 'Play / pause', group: 'Preview', keys: ['Space'], scope: 'app' },
@@ -198,7 +199,7 @@ export const KEY_COMMANDS: KeyCommand[] = [
 	{ id: 'preview.vvSky', label: 'Sky behind Vibrant Visuals on / off', group: 'Preview', keys: [], scope: 'app' },
 	{ id: 'preview.spawn.command', label: 'Spawn as /particle', group: 'Preview', keys: [], scope: 'app' },
 	{ id: 'preview.spawn.script', label: 'Spawn as a script', group: 'Preview', keys: [], scope: 'app' },
-	{ id: 'preview.spawn.entity', label: 'Spawn on an entity', group: 'Preview', keys: [], scope: 'app' },
+	{ id: 'preview.spawn.entity', label: 'Spawn from an entity’s animation', group: 'Preview', keys: [], scope: 'app' },
 
 	{ id: 'view.inspector.categories', label: 'Inspector by category', group: 'View', keys: [], scope: 'app' },
 	{ id: 'view.inspector.phases', label: 'Inspector by phase', group: 'View', keys: [], scope: 'app' },

@@ -1,4 +1,3 @@
-import { COMPONENTS } from '@oxygen/format';
 import { molangMetadata } from '@oxygen/metadata';
 import type { Host } from '../host';
 import ui from '../../package.json';
@@ -49,10 +48,6 @@ export function engineFacts(): Fact[] {
 		{ label: 'Particle engine', value: `Wintersky ${wintersky.version} (Oxygen fork)`, href: 'https://github.com/dev-hydrogen/oxygen-wintersky' },
 		{ label: 'Molang', value: `MolangJS ${molangjs.version} (Oxygen fork)` },
 		{ label: 'Game data', value: `Minecraft ${molangMetadata.game}, from ${repo} at ${commit.slice(0, 7)}`, href: `https://github.com/${repo}/tree/${commit}` },
-		{ label: 'Queries known', value: `${molangMetadata.queries.length}` },
-		{ label: 'Math functions', value: `${molangMetadata.math.length}` },
-		{ label: 'Components', value: `${COMPONENTS.length}` },
-		{ label: 'Live particles per emitter', value: '1,000, whether spawned by /particle, a script or an entity (measured in-game)' },
 	];
 }
 

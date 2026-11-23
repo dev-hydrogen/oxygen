@@ -11,6 +11,8 @@
 	import InputEditor from '../context/InputEditor.svelte';
 	import ScrubNumber from '../fields/ScrubNumber.svelte';
 	import MolangText from '../fields/MolangText.svelte';
+	import Hint from '../fields/Hint.svelte';
+	import { tip } from '../../lib/tip';
 
 	interface Props {
 		workspace: Workspace;
@@ -49,6 +51,13 @@
 		void session?.version;
 		return session?.analysis.queries ?? [];
 	});
+	/** the effect's own variables and temps, where each is set and read */
+	const flow = $derived.by(() => {
+		void session?.version;
+		const temps = (session?.analysis.tempUses ?? []).map((t) => ({ ...t, temp: true, builtin: false, curve: false, external: undefined as string | undefined }));
+		return [...variables.map((v) => ({ ...v, temp: false })), ...temps];
+	});
+	const DOC = 'guide#inputs-and-scenarios-context';
 
 	// live values: what the preview used last, refreshed a few times a second
 	let tick = $state(0);
@@ -300,11 +309,15 @@
 
 <div class="context">
 	{#if session}
+		<div class="cols">
+		<!-- the scenario: what stands in for the caller -->
+		<div class="set">
 		<section>
 			<div class="head">
 				<h3>Scenario</h3>
+				<Hint label="About scenarios" where="this file › oxygen › scenarios" text="Values standing in for what an entity or script hands the effect. With none, nothing outside the effect supplies any, as with `/particle`." doc={DOC} />
 				<select aria-label="Active scenario" value={active?.name ?? ''} onchange={(e) => save(scenarios, e.currentTarget.value || null, 'Switch scenario')}>
-					<option value="">None (as spawned in-game)</option>
+					<option value="">None</option>
 					{#each scenarios as s (s.name)}<option value={s.name}>{s.name}</option>{/each}
 				</select>
 				<span class="spacer"></span>
@@ -320,29 +333,23 @@
 					<input value={active.name} onchange={(e) => rename(e.currentTarget.value)} />
 				</label>
 			{/if}
-			<p class="note pad">
-				{#if active}
-					A scenario stands in for what an entity or script hands the effect. It's saved in the file's oxygen block, which the game ignores.
-				{:else}
-					Nothing outside the effect supplies values, as when it's spawned with /particle. Setting any input below starts a scenario.
-				{/if}
-			</p>
 		</section>
 
 		<section>
 			<div class="head">
-				<h3>Variables in</h3>
+				<h3>Inputs</h3>
 				<span class="dim ox-num">{inputNames.length}</span>
+				<Hint label="About inputs" text="Variables (`v.`), temps (`t.`) and context values (`c.`) the effect reads but never sets. How the game hands each over, and what pinning does, is in the Documentation." doc={DOC} />
 				<span class="spacer"></span>
 				{#if inputNames.length}
 					<span class="dim">Fill unset with</span>
-					<button class="btn ox-num" title="Every variable without a value gets 0" onclick={() => fillUnset(0)}>0</button>
-					<button class="btn ox-num" title="Every variable without a value gets 1" onclick={() => fillUnset(1)}>1</button>
-					<button class="btn ox-code" title="Every variable without a value gets an empty string" onclick={() => fillUnset('')}>''</button>
-					<span class="fillset" title="Every variable without a value gets this number. Drag it, or keep typing, to change the ones it filled together.">
+					<button class="btn ox-num" onclick={() => fillUnset(0)}>0</button>
+					<button class="btn ox-num" onclick={() => fillUnset(1)}>1</button>
+					<button class="btn ox-code" use:tip={'An empty string'} onclick={() => fillUnset('')}>''</button>
+					<span class="fillset" use:tip={'Drag or keep typing to change the ones it filled together'}>
 						<ScrubNumber label="Fill unset variables with" value={fillVarValue} allowEmpty placeholder="number…" onchange={fillUnsetWith} />
 					</span>
-					<button class="btn" disabled={!active?.variables} title="Remove every value set here" onclick={clearVariables}>Clear</button>
+					<button class="btn" disabled={!active?.variables} onclick={clearVariables}>Clear</button>
 				{/if}
 			</div>
 			{#each inputNames as name (name)}
@@ -362,7 +369,7 @@
 					onchange={(v) => setVariable(name, v)}
 				/>
 			{:else}
-				<p class="note pad">The effect sets every variable it reads.</p>
+				<p class="note pad">None: the effect sets everything it reads.</p>
 			{/each}
 			{#if numeric.length > 1}
 				<div class="allrow pad">
@@ -381,11 +388,10 @@
 			{/if}
 			<div class="adder pad">
 				<input class="ox-code" placeholder="v.name, t.name or c.name" aria-label="Add a variable" bind:value={addingVar} onkeydown={(e) => e.key === 'Enter' && addVariable()} />
-				<button class="btn" onclick={addVariable}>Add variable</button>
+				<button class="btn" onclick={addVariable}>Add</button>
 			</div>
-			<p class="note pad">Variables (v.) are handed over once, before creation_expression, like a Script API variable map. Temps (t.) go into the temp store all effects share just before the effect starts, as a parent's event leaves them before it spawns a child. Context values (c.) are there for every expression, as the caller supplies them; Molang can't set them. Pinned ones are written again before every update, which the game never does.</p>
 			<div class="pre pad">
-				<span>Pre-effect script</span>
+				<span class="ox-code key" use:tip={{ where: 'animation › particle_effects › pre_effect_script', text: 'Molang run on the entity before the effect starts. What it sets in `v.` is handed to the effect.' }}>pre_effect_script</span>
 				<MolangText
 					label="Pre-effect script"
 					multiline
@@ -400,18 +406,19 @@
 			<div class="head">
 				<h3>Queries</h3>
 				<span class="dim ox-num">{queries.length + extraQueries.length}</span>
+				<Hint label="About queries" text="Camera, time, position and entity queries follow the scene unless set here. A call with changing arguments can take a value per argument." doc={DOC} />
 				<span class="spacer"></span>
 				{#if unsuppliedQueries.length || filledQueries.length}
-					<span class="dim">Fill {unsuppliedQueries.length ? `${unsuppliedQueries.length} unsupplied` : 'unsupplied'} with</span>
-					<button class="btn ox-num" disabled={!unsuppliedQueries.length} title="Every query nothing supplies gets 0" onclick={() => fillUnsupplied(0)}>0</button>
-					<button class="btn ox-num" disabled={!unsuppliedQueries.length} title="Every query nothing supplies gets 1" onclick={() => fillUnsupplied(1)}>1</button>
-					<button class="btn ox-code" disabled={!unsuppliedQueries.length} title="Every query nothing supplies gets an empty string" onclick={() => fillUnsupplied('')}>''</button>
-					<span class="fillset" title="Every query nothing supplies gets this number. Drag it, or keep typing, to change the ones it filled together.">
+					<span class="dim" use:tip={'Queries neither set here nor answered by the scene: they read 0'}>Fill {unsuppliedQueries.length ? `${unsuppliedQueries.length} unsupplied` : 'unsupplied'} with</span>
+					<button class="btn ox-num" disabled={!unsuppliedQueries.length} onclick={() => fillUnsupplied(0)}>0</button>
+					<button class="btn ox-num" disabled={!unsuppliedQueries.length} onclick={() => fillUnsupplied(1)}>1</button>
+					<button class="btn ox-code" disabled={!unsuppliedQueries.length} use:tip={'An empty string'} onclick={() => fillUnsupplied('')}>''</button>
+					<span class="fillset" use:tip={'Drag or keep typing to change the ones it filled together'}>
 						<ScrubNumber label="Fill unsupplied queries with" value={fillQueryValue} allowEmpty placeholder="number…" onchange={fillUnsuppliedWith} />
 					</span>
 				{/if}
 				{#if queries.length || extraQueries.length}
-					<button class="btn" disabled={!active?.queries} title="Remove every query value set here" onclick={clearQueries}>Clear</button>
+					<button class="btn" disabled={!active?.queries} onclick={clearQueries}>Clear</button>
 				{/if}
 			</div>
 			{#each queries as q (q.signature)}
@@ -465,41 +472,42 @@
 			{/if}
 			<div class="adder pad">
 				<input class="ox-code" placeholder="q.property('ns:name')" aria-label="Add a query value" bind:value={addingQuery} onkeydown={(e) => e.key === 'Enter' && addQuery()} />
-				<button class="btn" onclick={addQuery}>Add query</button>
+				<button class="btn" onclick={addQuery}>Add</button>
 			</div>
-			<p class="note pad">Camera, time, position and stand-in entity queries follow the live scene unless set here. A call with changing arguments can take a value per argument.</p>
 		</section>
 
+		</div>
+		<!-- the effect's own variables: read-only, so it sits beside the scenario when there's room -->
+		<div class="flow">
 		<section>
-			<div class="head"><h3>Data flow</h3><span class="dim ox-num">{variables.length}</span></div>
+			<div class="head"><h3>Data flow</h3><span class="dim ox-num">{flow.length}</span></div>
 			<table>
 				<thead><tr><th>Name</th><th>Set by</th><th>Read by</th></tr></thead>
 				<tbody>
-					{#each variables as v (v.name)}
-						<tr class:unset={!v.writes.length && !v.external && !v.curve}>
-							<td class="ox-code">
+					{#each flow as v (v.name)}
+						<tr class:unset={!v.temp && !v.writes.length && !v.external && !v.curve}>
+							<td class="ox-code" class:temp={v.temp}>
 								{short(v.name)}
-								{#if !v.builtin}<button class="ren" title="Rename everywhere (F2 in an editor)" aria-label="Rename {short(v.name)}" onclick={() => (session.renameRequest = v.name)}>Rename</button>{/if}
+								{#if !v.builtin && !v.temp}<button class="ren" aria-label="Rename {short(v.name)}" onclick={() => (session.renameRequest = v.name)}>Rename</button>{/if}
 							</td>
 							<td>
 								{#if v.curve}<span class="chip">curve</span>{/if}
 								{#if v.external}<span class="chip ext">{v.external}</span>{/if}
 								{#each v.writes as w (w.path)}<button class="use" style:--phase={PHASE_VAR[w.phase]} onclick={() => (session.selected = w.path)}>{w.label}</button>{/each}
-								{#if !v.writes.length && !v.external && !v.curve}<span class="warn">nothing</span>{/if}
+								{#if !v.writes.length && !v.external && !v.curve}<span class={v.temp ? 'dim' : 'warn'} use:tip={v.temp ? 'Temps are shared by every effect: whatever set it last, outside this effect' : null}>{v.temp ? 'outside' : 'nothing'}</span>{/if}
 							</td>
 							<td>
 								{#each v.reads as r (r.path)}<button class="use" style:--phase={PHASE_VAR[r.phase]} onclick={() => (session.selected = r.path)}>{r.label}</button>{/each}
 							</td>
 						</tr>
 					{:else}
-						<tr><td colspan="3" class="dim">This effect uses no variables yet.</td></tr>
+						<tr><td colspan="3" class="dim">No variables or temps.</td></tr>
 					{/each}
 				</tbody>
 			</table>
-			{#if session.analysis.temps.length}
-				<p class="note pad">Temps in use: <span class="ox-code">{session.analysis.temps.map((t) => t.replace('temp.', 't.')).join(', ')}</span>. In-game, temps are global: other effects can see and overwrite them.</p>
-			{/if}
 		</section>
+		</div>
+		</div>
 	{:else}
 		<p class="note pad">No effect open.</p>
 	{/if}
@@ -508,7 +516,27 @@
 <style>
 	.context {
 		height: 100%;
+		container-type: inline-size;
+	}
+	.cols {
+		height: 100%;
 		overflow: auto;
+	}
+	/* wide enough (the usual place, under the viewport): two columns, each scrolling by itself */
+	@container (min-width: 820px) {
+		.cols {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) 340px;
+			overflow: hidden;
+		}
+		.set,
+		.flow {
+			min-height: 0;
+			overflow: auto;
+		}
+		.flow {
+			border-left: 1px solid var(--ox-rule);
+		}
 	}
 	section {
 		border-bottom: 1px solid var(--ox-rule);
@@ -637,6 +665,14 @@
 	}
 	tr.unset td:first-child {
 		color: var(--ox-error);
+	}
+	td.temp {
+		color: var(--ox-syn-temp);
+	}
+	.key {
+		color: var(--ox-syn-variable);
+		font-size: 12px;
+		align-self: flex-start;
 	}
 	.use {
 		display: block;

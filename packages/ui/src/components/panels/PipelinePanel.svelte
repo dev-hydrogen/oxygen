@@ -73,7 +73,7 @@
 
 <div class="pipeline" bind:clientWidth={width}>
 	{#if session && layout}
-		<p class="intro">One frame in the game's order. Lines carry variables from the field that sets them to the fields that read them; dashed lines are reads that come before any write on the first frame.</p>
+		<p class="intro"><span class="key solid"></span>set, then read <span class="key dashed"></span>read before its first write</p>
 		<svg width={width} height={layout.height} role="img" aria-label="Evaluation pipeline">
 			{#each layout.cols as c, i (c)}
 				<g style:--phase={PHASE_VAR[c]}>
@@ -153,6 +153,17 @@
 		stroke: var(--phase);
 		stroke-width: 1;
 		opacity: 0.5;
+	}
+	.key {
+		display: inline-block;
+		width: 22px;
+		margin: 0 6px 3px 0;
+		border-top: 1.5px solid var(--ox-haze);
+		vertical-align: middle;
+	}
+	.key.dashed {
+		margin-left: 14px;
+		border-top-style: dashed;
 	}
 	.edge {
 		fill: none;

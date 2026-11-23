@@ -48,13 +48,14 @@
 			const shown = workspace.openPanels.includes(id);
 			list.push({ label: `${shown ? 'Hide' : 'Show'} ${p.title}`, group: 'View', keys: k(`view.panel.${id}`), run: () => (shown ? workspace.hide(id) : workspace.show(id)) });
 		}
-		for (const l of LAYOUTS) list.push({ label: `Layout: ${l.label}`, group: 'View', keys: k(`view.layout.${l.id}`), run: () => void (workspace.layoutRequest = { name: l.id, at: Date.now() }) });
-		list.push({ label: 'Inspector: categories', group: 'View', keys: k('view.inspector.categories'), run: () => void (workspace.inspectorView = 'categories') });
-		list.push({ label: 'Inspector: phases', group: 'View', keys: k('view.inspector.phases'), run: () => void (workspace.inspectorView = 'phases') });
+		for (const l of LAYOUTS) list.push({ label: `Layout: ${l.label}`, group: 'View', keys: k(`view.layout.${l.id}`), run: () => void (workspace.applyLayout(l.id)) });
+		list.push({ label: 'Inspector: group by category', group: 'View', keys: k('view.inspector.categories'), run: () => void (workspace.inspectorView = 'categories') });
+		list.push({ label: 'Inspector: group by evaluation phase', group: 'View', keys: k('view.inspector.phases'), run: () => void (workspace.inspectorView = 'phases') });
 		list.push({ label: 'Settings', group: 'Oxygen', keys: k('app.settings'), run: () => workspace.openSettings() });
 		list.push({ label: 'Settings: keyboard shortcuts', group: 'Oxygen', run: () => workspace.openSettings('keyboard') });
 		list.push({ label: 'Settings: preview', group: 'Oxygen', run: () => workspace.openSettings('preview') });
 		list.push({ label: 'Settings: viewport and camera', group: 'Oxygen', run: () => workspace.openSettings('viewport') });
+		list.push({ label: 'Documentation', group: 'Help', keys: k('app.docs'), run: () => workspace.openDocs('guide') });
 		list.push({ label: 'About Oxygen', group: 'Help', keys: k('app.about'), run: () => workspace.openAbout('about') });
 		list.push({ label: "What's new", group: 'Help', run: () => workspace.openAbout('new') });
 		list.push({ label: 'Set up a coding agent (MCP)', group: 'Help', run: () => workspace.openAbout('agents') });

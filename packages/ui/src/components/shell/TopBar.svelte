@@ -1,8 +1,9 @@
 <script lang="ts">
-	import type { Workspace } from '../../state/workspace.svelte';
+	import { LAYOUTS, type Workspace } from '../../state/workspace.svelte';
 	import { closeEffect, closeEffects, copyShareLink, save } from '../../lib/actions';
-	import { openContextMenu, type MenuItem } from '../../lib/context-menu.svelte';
+	import { contextMenu, openContextMenu, type MenuItem } from '../../lib/context-menu.svelte';
 	import type { EffectSession } from '../../state/session.svelte';
+	import { layoutMenuItems } from '../../lib/layout-menu';
 	import GameMenu from './GameMenu.svelte';
 	import MenuBar from './MenuBar.svelte';
 	import logoDark from '../../assets/logo-dark.png?inline';
@@ -14,6 +15,17 @@
 	}
 
 	let { workspace, panels }: Props = $props();
+
+	const layout = $derived(LAYOUTS.find((l) => l.id === workspace.layoutName) ?? LAYOUTS[0]);
+	let layoutOpen = $state(false);
+
+	function openLayout(e: MouseEvent) {
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		layoutOpen = openContextMenu({ clientX: r.left, clientY: r.bottom + 3 }, layoutMenuItems(workspace));
+	}
+	$effect(() => {
+		if (!contextMenu.open) layoutOpen = false;
+	});
 
 	/** right-click on a tab */
 	function tabMenu(s: EffectSession): MenuItem[] {
@@ -80,6 +92,11 @@
 		<MenuBar {workspace} {panels} />
 		<span class="spacer"></span>
 		<div class="actions">
+			<button class="btn ghost layout" class:on={layoutOpen} aria-haspopup="menu" aria-expanded={layoutOpen} title="Layout: the window's arrangement, and how the Inspector groups fields" onclick={openLayout}>
+				<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.1" /><path d="M6 3v10M6 8.5h8" fill="none" stroke="currentColor" stroke-width="1.1" /></svg>
+				<span>{layout.label}</span>
+				<svg class="chev" viewBox="0 0 8 8" aria-hidden="true"><path d="M1.5 2.5l2.5 3 2.5-3" fill="none" stroke="currentColor" stroke-width="1.3" /></svg>
+			</button>
 			<button class="btn ghost" title={workspace.keymap.title('Commands', 'app.commands')} onclick={() => (workspace.paletteOpen = true)}>Commands{#if workspace.keymap.label('app.commands')}<kbd>{workspace.keymap.label('app.commands')}</kbd>{/if}</button>
 			<button class="btn ghost icon" aria-label="Settings" title={workspace.keymap.title('Settings', 'app.settings')} onclick={() => workspace.openSettings()}>
 				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 5.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8zm5.3 3.3.1-.9-.1-.9 1.4-1.1-1.4-2.4-1.7.6a5 5 0 0 0-1.5-.9L9.8 1.5H6.2l-.3 1.8a5 5 0 0 0-1.5.9l-1.7-.6-1.4 2.4 1.4 1.1-.1.9.1.9-1.4 1.1 1.4 2.4 1.7-.6c.5.4 1 .7 1.5.9l.3 1.8h3.6l.3-1.8c.5-.2 1-.5 1.5-.9l1.7.6 1.4-2.4z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" /></svg>
@@ -108,7 +125,7 @@
 				}}
 				oncontextmenu={(e) => openContextMenu(e, tabMenu(s))}
 			>
-				<button class="tab-name" onclick={() => (workspace.activeId = s.id)} title={s.file.name}>{s.file.name}</button>
+				<button class="tab-name" class:peek={s.preview} onclick={() => (workspace.activeId = s.id)} ondblclick={() => (s.preview = false)} title={s.preview ? `${s.file.name} (opened for a look: double-click to keep it open)` : s.file.name}>{s.file.name}</button>
 				{#if s.dirty}<span class="dirty" aria-label="unsaved changes"></span>{/if}
 				<button class="tab-close" aria-label="Close {s.file.name}" onclick={() => closeEffect(workspace, s.id)}>
 					<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" stroke-width="1.3" /></svg>
@@ -208,6 +225,9 @@
 		text-overflow: ellipsis;
 		padding: 0;
 	}
+	.tab-name.peek {
+		font-style: italic;
+	}
 	.dirty {
 		width: 6px;
 		height: 6px;
@@ -277,6 +297,31 @@
 		font-size: 11px;
 		color: var(--ox-text-dim);
 		margin-left: 4px;
+	}
+	.btn.layout {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 0 8px;
+		max-width: 220px;
+	}
+	.btn.layout span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.btn.layout svg {
+		width: 15px;
+		height: 15px;
+		flex: none;
+	}
+	.btn.layout .chev {
+		width: 8px;
+		height: 8px;
+	}
+	.btn.layout.on {
+		background: var(--ox-active);
+		color: var(--ox-frost);
 	}
 	.btn.icon {
 		width: 26px;

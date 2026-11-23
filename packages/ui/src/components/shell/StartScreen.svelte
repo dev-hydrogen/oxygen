@@ -1,8 +1,11 @@
 <script lang="ts">
 	import type { FileRef } from '../../host';
 	import type { Workspace } from '../../state/workspace.svelte';
+	import FilesPanel from '../panels/FilesPanel.svelte';
+	// the README's banner (docs/media/logo-on-dark.png, from tools/logo.mjs) at 2/5 of its size
+	import banner from '../../assets/logo-banner-dark.png?inline';
 
-	/** Shown when no effect is open: start something, reopen something, or learn from an example */
+	/** Shown when no effect is open: start something, reopen something, browse the opened pack, or learn from an example */
 	interface Props {
 		workspace: Workspace;
 	}
@@ -15,6 +18,13 @@
 	$effect(() => {
 		void workspace.host.recentFiles?.().then((r) => (recent = r));
 		void workspace.host.examples().then((e) => (examples = e));
+	});
+
+	// a pack opened from here has nowhere else to show while this screen covers the panels: its files go here
+	let hasPack = $state(false);
+	$effect(() => {
+		void workspace.packVersion;
+		void (workspace.host.listPack?.() ?? Promise.resolve(null)).then((p) => (hasPack = !!p)).catch(() => (hasPack = false));
 	});
 
 	function folder(f: FileRef): string {
@@ -30,10 +40,9 @@
 </script>
 
 <div class="start">
-	<div class="inner">
+	<div class="inner" class:wide={hasPack}>
 		<header>
-			<h1>Oxygen</h1>
-			<p>A particle IDE for Minecraft Bedrock that shows what the game actually renders.</p>
+			<h1><img class="logo" src={banner} alt="Oxygen: particle IDE for Minecraft Bedrock" /></h1>
 		</header>
 
 		<div class="actions">
@@ -45,6 +54,12 @@
 		</div>
 
 		<div class="cols">
+			{#if hasPack}
+				<section class="pack">
+					<h2>Resource pack</h2>
+					<div class="files"><FilesPanel {workspace} /></div>
+				</section>
+			{/if}
 			{#if workspace.host.recentFiles}
 				<section>
 					<h2>Recent</h2>
@@ -67,8 +82,6 @@
 				</div>
 			</section>
 		</div>
-
-		<p class="tip dim">{km.label('app.commands') ?? 'The Commands button'} opens the command palette: every action, panel and layout is there.</p>
 	</div>
 </div>
 
@@ -89,15 +102,29 @@
 		flex-direction: column;
 		gap: 22px;
 	}
-	h1 {
-		margin: 0;
-		font-size: 26px;
-		font-weight: 650;
-		letter-spacing: -0.01em;
+	.inner.wide {
+		width: min(1040px, calc(100% - 48px));
 	}
-	header p {
-		margin: 4px 0 0;
-		color: var(--ox-haze);
+	h1 {
+		margin: -24px 0 -28px -28px;
+	}
+	.logo {
+		display: block;
+		width: 416px;
+		max-width: 100%;
+		height: auto;
+		user-select: none;
+		-webkit-user-drag: none;
+	}
+	.pack {
+		min-width: 0;
+	}
+	.files {
+		height: min(520px, 60vh);
+		border: 1px solid var(--ox-rule);
+		border-radius: var(--ox-radius-float);
+		background: var(--ox-panel);
+		overflow: hidden;
 	}
 	.actions {
 		display: flex;
@@ -180,9 +207,5 @@
 	}
 	.dim {
 		color: var(--ox-text-dim);
-	}
-	.tip {
-		margin: 0;
-		font-size: 11.5px;
 	}
 </style>

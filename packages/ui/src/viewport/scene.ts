@@ -468,7 +468,7 @@ export class ViewportScene {
 			if (s) this.particles.syncEmitters(all(), this.camera);
 		};
 		const vibrant = () => {
-			this.particles.vibrant = VibrantPipeline.settings(s!.vvLighting, s!.timeOfDay, s!.vvFromPack.lighting);
+			this.particles.vibrant = VibrantPipeline.settings(s!.vvLighting, s!.timeOfDay, s!.vvFromPack.lighting || s!.lightingEdits.length > 0);
 			// the measured sky, so blended and additive particles sit on what the game shows behind them; or the
 			// classic backdrop, run backwards through the tone mapper so it comes out the same
 			const cb = this.captureBackdrop;

@@ -51,6 +51,8 @@ export interface EffectAnalysis {
 	byPath: Map<string, FieldRef>;
 	variables: VariableInfo[];
 	temps: string[];
+	/** where each temp is set and read (temps are global: other effects' uses aren't here) */
+	tempUses: { name: string; writes: VariableUse[]; reads: VariableUse[] }[];
 	/** temps the effect reads but never sets: whatever set them before (a parent's event) is its input */
 	tempInputs: string[];
 	/** context.* values the effect reads (the caller supplies them; Molang can't set them) */
@@ -312,6 +314,12 @@ export function analyzeEffect(def: EffectDefinition, options: AnalysisOptions = 
 	const temps = new Set<string>();
 	const tempWrites = new Set<string>();
 	const tempReads = new Set<string>();
+	const tempUses = new Map<string, { name: string; writes: VariableUse[]; reads: VariableUse[] }>();
+	const tempUse = (name: string, kind: 'writes' | 'reads', use: VariableUse) => {
+		const t = tempUses.get(name) ?? { name, writes: [], reads: [] };
+		if (!t[kind].some((u) => u.path === use.path)) t[kind].push(use);
+		tempUses.set(name, t);
+	};
 	const contextReads = new Set<string>();
 	const addWrite = (name: string, rank: number, use: VariableUse) => {
 		const list = writes.get(name) ?? [];
@@ -326,6 +334,7 @@ export function analyzeEffect(def: EffectDefinition, options: AnalysisOptions = 
 			if (w.ns === 'temp') {
 				temps.add(w.name);
 				tempWrites.add(w.name);
+				tempUse(w.name, 'writes', { path: f.path, label: f.label, phase });
 			}
 			if (w.ns === 'variable') addWrite(w.name, f.rank, { path: f.path, label: f.label, phase });
 		}
@@ -333,6 +342,7 @@ export function analyzeEffect(def: EffectDefinition, options: AnalysisOptions = 
 			if (r.ns === 'temp') {
 				temps.add(r.name);
 				tempReads.add(r.name);
+				tempUse(r.name, 'reads', { path: f.path, label: f.label, phase });
 			}
 			if (r.ns === 'context') contextReads.add(r.name);
 			if (r.ns !== 'variable') continue;
@@ -459,7 +469,7 @@ export function analyzeEffect(def: EffectDefinition, options: AnalysisOptions = 
 	}
 
 	problems.push(...structuralChecks(def, options, fields));
-	return { fields, byPath, variables, temps: [...temps], tempInputs: [...tempReads].filter((t) => !tempWrites.has(t)).sort(), contextInputs: [...contextReads].sort(), problems, eventRanks, queries: [...queryMap.values()].sort((a, b) => a.signature.localeCompare(b.signature)) };
+	return { fields, byPath, variables, temps: [...temps], tempUses: [...tempUses.values()].sort((a, b) => a.name.localeCompare(b.name)), tempInputs: [...tempReads].filter((t) => !tempWrites.has(t)).sort(), contextInputs: [...contextReads].sort(), problems, eventRanks, queries: [...queryMap.values()].sort((a, b) => a.signature.localeCompare(b.signature)) };
 }
 
 /** What of an event node the game runs (t51): one with a sequence or randomize ignores its own parts */

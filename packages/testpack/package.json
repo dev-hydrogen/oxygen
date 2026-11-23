@@ -1,6 +1,6 @@
 {
 	"name": "@oxygen/testpack",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"private": true,
 	"type": "module",
 	"description": "Generates in-game verification packs (and the test world) for Oxygen's faithfulness tests",

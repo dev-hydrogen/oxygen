@@ -12,15 +12,17 @@
 		step?: number;
 		/** how it reads when it can't be changed */
 		text: string;
+		/** decimals shown (the value keeps all of its own until it's changed) */
+		digits?: number;
 	}
 
-	let { value, label, onchange, disabled = false, step = 0.1, text }: Props = $props();
+	let { value, label, onchange, disabled = false, step = 0.1, text, digits = 4 }: Props = $props();
 </script>
 
 {#if disabled || (typeof value !== 'number' && typeof value !== 'string')}
 	<span class="ro">{text}</span>
 {:else if typeof value === 'number'}
-	<span class="edit"><ScrubNumber {label} {step} value={Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : 0} onchange={(n) => n !== null && onchange(n)} /></span>
+	<span class="edit"><ScrubNumber {label} {step} value={Number.isFinite(value) ? Math.round(value * 10 ** digits) / 10 ** digits : 0} onchange={(n) => n !== null && onchange(n)} /></span>
 {:else}
 	<input class="edit text ox-code" aria-label={label} {value} onchange={(e) => onchange(e.currentTarget.value)} />
 {/if}

@@ -5,6 +5,7 @@
 	import { SECTIONS, SETTINGS, defaultOf, getPref, isModified, searchSettings, setPref, type SettingRow } from '../../lib/settings-schema';
 	import { VERSION } from '../../lib/about';
 	import Toggle from '../fields/Toggle.svelte';
+	import Hint from '../fields/Hint.svelte';
 	import Select from '../fields/Select.svelte';
 	import KeyboardSettings from './KeyboardSettings.svelte';
 
@@ -80,8 +81,16 @@
 		if (importer) importer.value = '';
 	}
 
-	function resetAll() {
-		if (!confirm('Put every setting, keys included, back to how Oxygen comes? The panel layout stays.')) return;
+	async function resetAll() {
+		const a = await workspace.ask({
+			title: 'Put every setting back to how Oxygen comes?',
+			message: 'Keys included. The panel layout stays.',
+			actions: [
+				{ id: 'cancel', label: 'Cancel', kind: 'quiet' },
+				{ id: 'go', label: 'Reset the settings', kind: 'danger' },
+			],
+		});
+		if (a !== 'go') return;
 		workspace.resetPreferences();
 		workspace.say('Settings are back to their defaults.');
 	}
@@ -125,7 +134,6 @@
 				<button class="x" aria-label="Close settings" onclick={close}>×</button>
 			</div>
 			<div class="scroll">
-				{#if !query.trim() && SECTIONS.find((s) => s.id === section)}<p class="lede">{SECTIONS.find((s) => s.id === section)?.help}{section === 'preview' ? '. Each effect’s own controls in the viewport change it for that effect.' : '.'}</p>{/if}
 				{#each grouped as g (g.title)}
 					<section>
 						<h5>{g.title}</h5>
@@ -135,7 +143,7 @@
 							<div class="row" class:changed>
 								<div class="what">
 									<span class="label">{r.label}</span>
-									{#if r.help}<span class="help">{r.help}</span>{/if}
+									{#if r.help}<Hint label="About {r.label}" text={r.help} />{/if}
 								</div>
 								<div class="control">
 									{#if r.control.type === 'toggle'}
@@ -308,10 +316,6 @@
 		flex-direction: column;
 		gap: 16px;
 	}
-	.lede {
-		margin: 0;
-		color: var(--ox-haze);
-	}
 	h5,
 	.keyhead {
 		margin: 0 0 4px;
@@ -325,8 +329,8 @@
 		display: flex;
 		align-items: center;
 		gap: 16px;
-		min-height: 40px;
-		padding: 5px 8px;
+		min-height: 32px;
+		padding: 3px 8px;
 		border-left: 2px solid transparent;
 		border-radius: var(--ox-radius);
 	}
@@ -340,12 +344,8 @@
 		flex: 1;
 		min-width: 0;
 		display: flex;
-		flex-direction: column;
-		gap: 1px;
-	}
-	.help {
-		font-size: 11.5px;
-		color: var(--ox-text-dim);
+		align-items: center;
+		gap: 6px;
 	}
 	.control {
 		display: flex;

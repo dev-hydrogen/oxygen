@@ -25,6 +25,8 @@ desktop app.
   fixes and refactors. See [writing Molang](docs/molang.md).
 - **Build whole effects.** Curves, events, child effects, textures and flipbooks, blocks and a moving entity in
   the scene, and a Vibrant Visuals preview with glow.
+- **Work on a whole pack.** Browse a resource pack's particles and textures, and edit the files Vibrant Visuals
+  reads (texture sets, colour grading, lighting) with their own keys and values.
 
 [Join the discord!](https://discord.gg/TEq6PNb25T)
 
@@ -54,8 +56,8 @@ New to the editor? The [user guide](docs/guide.md) walks through the panels and 
 
 ## Layouts
 
-Seven layouts suit different jobs. Pick one from the View menu or the command palette (Ctrl+K), and drag any
-panel to make your own.
+Seven layouts suit different jobs. Pick one from the layout button in the top bar, the View menu or the command
+palette (Ctrl+K), and drag any panel to make your own.
 
 | | |
 | --- | --- |

@@ -247,7 +247,7 @@
 			{#if hoverX !== null}<line class="hover" x1={hoverX} x2={hoverX} y1={AXIS - 4} y2={data.height} />{/if}
 		</svg>
 	{:else if session}
-		<p class="empty">Nothing recorded yet. Play the effect: its particle count, every emitter's life and the events they fire appear here.</p>
+		<p class="empty">Nothing recorded yet: play the effect.</p>
 	{:else}
 		<p class="empty">No effect open.</p>
 	{/if}

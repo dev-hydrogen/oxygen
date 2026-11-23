@@ -122,7 +122,7 @@
 </script>
 
 <div class="menuwrap" use:menu={fieldMenu}>
-<FieldRow label={field.label} phase={field.phase} help={field.help} {order} {problems} {selected} {stacked} onselect={() => select()}>
+<FieldRow label={field.label} phase={field.phase} help={field.help} where={field.key ? `${component.id.replace('minecraft:', '')} › ${field.key.replace(/\//g, ' › ')}` : component.id} {order} {problems} {selected} {stacked} onselect={() => select()}>
 	{#if field.kind.type === 'molang'}
 		<MolangInput {session} {path} {label} placeholder={field.kind.default === null || field.kind.default === undefined ? 'not set' : String(field.kind.default)} context={molangContextFor(session, path, field)} onfocus={() => select()} />
 	{:else if field.kind.type === 'statements'}

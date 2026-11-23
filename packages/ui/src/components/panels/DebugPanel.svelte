@@ -1,6 +1,9 @@
 <script lang="ts">
 	import type { Workspace } from '../../state/workspace.svelte';
+	import { SPAWN_MODES } from '../../state/session.svelte';
+	import { tip } from '../../lib/tip';
 	import { PHASE_VAR } from '../../lib/molang-text';
+	import Hint from '../fields/Hint.svelte';
 	import Toggle from '../fields/Toggle.svelte';
 	import { explainFacing } from '../../lib/facing-text';
 	import EditValue from '../fields/EditValue.svelte';
@@ -13,6 +16,8 @@
 	let { workspace }: Props = $props();
 	const session = $derived(workspace.active);
 	let tab = $state<'particle' | 'log'>('particle');
+	/** the inspected particle's color, drawn large */
+	let colorOpen = $state(false);
 	let tickN = $state(0);
 	// live particle state refreshes a few times a second while playing
 	$effect(() => {
@@ -158,8 +163,9 @@
 	}
 	const READ_TIP = 'It only read this here: the value came from whatever ran before it in this pass (the emitter, an earlier particle, or in the render pass the last particle’s update)';
 	const SET_TIP = 'Its own expressions set this here';
-	const EDIT_NOTE = 'Drag or type a value to change it in the preview from now on, as if the effect had set it. The game has nothing like this; restarting plays the effect as written.';
-	const HALT_NOTE = 'Finish the frame (Next frame) to change values.';
+	const EDIT_TIP = 'Drag or type a value to change it in the preview from now on, as if the effect had set it. Restarting plays the effect as written.';
+	const TURN_TIP = 'What this particle’s own expressions used in the last frame. Plain values it set; dim ones it only read, so they hold whatever ran before it. Render comes after every particle’s update.';
+	const DOC = 'guide#inspecting-and-debugging';
 
 	function f(n: number, d = 3) {
 		if (Number.isNaN(n)) return 'NaN';
@@ -175,6 +181,21 @@
 		return n.replace(/^variable\./, 'v.').replace(/^temp\./, 't.');
 	}
 </script>
+
+{#snippet cells(list: { k: string; text: string; value?: number; what?: string }[])}
+	<span class="cells">
+		{#each list as c (c.k)}
+			<span class="cell">
+				<span class="k">{c.k}</span>
+				{#if c.what !== undefined && c.value !== undefined}
+					<EditValue label={c.what} value={c.value} text={c.text} digits={3} disabled={!!session?.halt} onchange={(v) => edit(c.what!, v)} />
+				{:else}
+					<span class="v">{c.text}</span>
+				{/if}
+			</span>
+		{/each}
+	</span>
+{/snippet}
 
 <div class="debug">
 	{#if session}
@@ -196,7 +217,7 @@
 
 		{#if tab === 'particle'}
 			{#if !session.selection}
-				<p class="empty">Click a particle in the viewport to inspect it, or an emitter's marker to inspect the emitter. Values show up here and next to each name in the Molang editors.</p>
+				<p class="empty">Click a particle in the viewport, or an emitter’s marker.</p>
 			{:else if session.selection.particle < 0}
 				{#if !einfo || einfo.gone}
 					<p class="empty">Emitter #{session.selection.emitter} is gone. <button class="link" onclick={() => session.select(null)}>Clear</button></p>
@@ -207,18 +228,29 @@
 						{#if einfo.parent !== null}<button class="link" onclick={() => session.select({ emitter: einfo.parent!, particle: -1 })}>parent #{einfo.parent}</button>{/if}
 						<button class="link" onclick={() => session.select(null)}>Clear</button>
 					</div>
-					<div class="grid ox-num">
-						<span>State</span><span>{einfo.expired ? 'expired' : einfo.active ? 'active (spawning)' : 'sleeping'}{einfo.bound ? ', bound to its parent' : ''}</span>
-						<span>Spawned by</span><span>{einfo.context}{einfo.loops ? ', loops' : ', plays one loop'}</span>
-						<span>Lifetime</span><span>{einfo.lifetime}: active {f(einfo.activeTime)} s{einfo.sleepTime ? `, sleep ${f(einfo.sleepTime)} s` : ''}</span>
-						<span>Age</span><span>{f(einfo.age)} s in loop {einfo.loop + 1} ({f(einfo.totalAge)} s in all)</span>
-						<span>Rate</span><span>{einfo.rate}{einfo.rate === 'steady' || einfo.rate === 'manual' ? `, at most ${einfo.maxParticles} alive` : ''}</span>
-						<span>Particles</span><span>{einfo.particles}</span>
-						<span>Position</span><span>{einfo.pos.map((n) => f(n)).join(', ')}</span>
-						<span>Travelled</span><span>{f(einfo.travelled)} blocks</span>
-						<span>Randoms</span><span>{einfo.randoms.map((n) => f(n)).join(', ')}</span>
+					<div class="props ox-num">
+						<span>State</span>
+						<span>{einfo.expired ? 'expired' : einfo.active ? 'active' : 'sleeping'}{#if einfo.bound}<span class="more">bound to its parent</span>{/if}</span>
+						<span>Spawned by</span>
+						<span>{SPAWN_MODES.find((m) => m.id === einfo.context)?.label ?? einfo.context}<span class="more">{einfo.loops ? 'loops' : 'plays one loop'}</span></span>
+						<span>Lifetime</span>
+						<span class="ox-code">emitter_lifetime_{einfo.lifetime}</span>
+						<span class="ox-code key" use:tip={'Seconds since this loop started'}>v.emitter_age</span>
+						<span>{f(einfo.age)} s<span class="more">loop {einfo.loop + 1}, {f(einfo.totalAge)} s in all</span></span>
+						<span class="ox-code key" use:tip={'The loop’s active time'}>v.emitter_lifetime</span>
+						<span>{f(einfo.activeTime)} s{#if einfo.sleepTime}<span class="more">then sleeps {f(einfo.sleepTime)} s</span>{/if}</span>
+						<span>Rate</span>
+						<span><span class="ox-code">emitter_rate_{einfo.rate}</span>{#if einfo.rate === 'steady' || einfo.rate === 'manual'}<span class="more">max_particles {einfo.maxParticles}</span>{/if}</span>
+						<span>Particles</span>
+						<span>{einfo.particles}<span class="more">alive</span></span>
+						<span>Position</span>
+						{@render cells(['x', 'y', 'z'].map((k, a) => ({ k, text: f(einfo.pos[a]) })))}
+						<span>Travelled</span>
+						<span>{f(einfo.travelled)} blocks</span>
+						<span class="ox-code key" use:tip={'Four random numbers from 0 to 1, drawn when the emitter starts and again each time it loops: `v.emitter_random_1` to `v.emitter_random_4`.'}>v.emitter_random_N</span>
+						{@render cells(einfo.randoms.map((n, i) => ({ k: String(i + 1), text: f(n) })))}
 					</div>
-					<h4>This frame, in order <span class="dim">(the emitter's own evaluations)</span></h4>
+					<h4>This frame, in order</h4>
 					<ol class="evals">
 						{#each session.traces as t, i (i)}
 							{@const ph = ENGINE_PHASE[t.phase] ?? 'event'}
@@ -230,10 +262,10 @@
 								</button>
 							</li>
 						{:else}
-							<li class="dim">No evaluations recorded yet. Let the preview run a frame, or step.</li>
+							<li class="dim">Nothing recorded yet: run a frame, or step.</li>
 						{/each}
 					</ol>
-					<h4>Variables</h4>
+					<h4>Variables <Hint label="About changing values" text={EDIT_TIP} doc={DOC} /></h4>
 					<div class="grid vars ox-num">
 						{#each Object.entries(einfo.vars).filter(([k]) => !k.startsWith('variable.particle_')) as [k, v] (k)}
 							<span class="ox-code">{short(k)}</span><EditValue label={short(k)} value={v} text={show(v)} disabled={!!session.halt} onchange={(x) => edit(k, x)} />
@@ -242,12 +274,12 @@
 						{/each}
 					</div>
 					{#if einfo.temps.length}
-						<h4>Temps <span class="dim">(global in-game)</span></h4>
+						<h4>Temps</h4>
 						<div class="grid vars ox-num">
 							{#each einfo.temps as [k, v] (k)}<span class="ox-code">{short(k)}</span><EditValue label={short(k)} value={v} text={show(v)} disabled={!!session.halt} onchange={(x) => edit(k, x)} />{/each}
 						</div>
 					{/if}
-					<p class="explain">{session.halt ? HALT_NOTE : EDIT_NOTE}</p>
+					{#if session.halt}<p class="explain">Stopped mid-frame: values can be changed once it finishes (Next frame).</p>{/if}
 				{/if}
 			{:else if !pinfo || pinfo.gone}
 				<p class="empty">Particle #{session.selection.particle} has expired. <button class="link" onclick={() => session.select(null)}>Clear</button></p>
@@ -258,16 +290,38 @@
 					{#if !pinfo.visible}<span class="warn">not drawn</span>{/if}
 					<button class="link" onclick={() => session.select(null)}>Clear</button>
 				</div>
-				<div class="grid ox-num">
-					<span>Age</span><span class="vals"><EditValue label="Age" value={pinfo.age} text="{f(pinfo.age)} s" disabled={!!session.halt} step={0.05} onchange={(v) => edit('age', v)} /><span class="dim">s of</span>{#if pinfo.lifetime !== null}<EditValue label="Lifetime" value={pinfo.lifetime} text="{f(pinfo.lifetime)} s" disabled={!!session.halt} step={0.05} onchange={(v) => edit('lifetime', v)} /><span class="dim">s</span>{:else}<span class="dim">no max lifetime</span>{/if}</span>
-					<span>Position</span><span class="vals">{#each ['x', 'y', 'z'] as k, a (k)}<EditValue label="Position {k}" value={pinfo.pos[a]} text={f(pinfo.pos[a])} disabled={!!session.halt} onchange={(v) => edit(`pos.${k}`, v)} />{/each}{#if pinfo.local}<span class="dim">emitter space</span>{/if}</span>
-					<span>Velocity</span><span class="vals">{#each ['x', 'y', 'z'] as k, a (k)}<EditValue label="Velocity {k}" value={pinfo.vel[a]} text={f(pinfo.vel[a])} disabled={!!session.halt} onchange={(v) => edit(`vel.${k}`, v)} />{/each}</span>
-					<span>Size</span><span>{pinfo.size.map((n) => f(n)).join(' × ')}</span>
-					<span>Rotation</span><span class="vals"><EditValue label="Rotation" value={pinfo.rot} text="{f(pinfo.rot, 1)}°" disabled={!!session.halt} step={1} onchange={(v) => edit('rot', v)} /><span class="dim">°</span></span>
-					<span>Facing dir</span><span>{pinfo.facing.map((n) => f(n)).join(', ')}</span>
-					<span>Color</span><span class="col"><span class="sw" style:--c="rgba({pinfo.color[0]},{pinfo.color[1]},{pinfo.color[2]},{pinfo.color[3] / 255})"></span>{pinfo.color.join(', ')}</span>
-					<span>UV</span><span>{pinfo.uv.map((n) => f(n, 4)).join(', ')}</span>
-					<span>Randoms</span><span>{pinfo.randoms.map((n) => f(n)).join(', ')}</span>
+				<div class="props ox-num">
+					<span class="ox-code key" use:tip={'Seconds since it spawned'}>v.particle_age</span>
+					<span class="one"><EditValue label="v.particle_age" value={pinfo.age} text={f(pinfo.age)} disabled={!!session.halt} step={0.05} onchange={(v) => edit('age', v)} /><span class="unit">s</span></span>
+					<span class="ox-code key" use:tip={'Seconds it lives, when it has a maximum'}>v.particle_lifetime</span>
+					{#if pinfo.lifetime !== null}
+						<span class="one"><EditValue label="v.particle_lifetime" value={pinfo.lifetime} text={f(pinfo.lifetime)} disabled={!!session.halt} step={0.05} onchange={(v) => edit('lifetime', v)} /><span class="unit">s</span></span>
+					{:else}
+						<span class="dim">no maximum</span>
+					{/if}
+					<span use:tip={pinfo.local ? 'In the emitter’s space: `emitter_local_space` is on' : 'In the world'}>Position{#if pinfo.local}<span class="more">local</span>{/if}</span>
+					{@render cells(['x', 'y', 'z'].map((k, a) => ({ k, value: pinfo.pos[a], what: `pos.${k}`, text: f(pinfo.pos[a]) })))}
+					<span use:tip={'Blocks per second'}>Velocity</span>
+					{@render cells(['x', 'y', 'z'].map((k, a) => ({ k, value: pinfo.vel[a], what: `vel.${k}`, text: f(pinfo.vel[a]) })))}
+					<span use:tip={'The billboard’s size as evaluated'}>Size</span>
+					{@render cells(['x', 'y'].map((k, a) => ({ k, text: f(pinfo.size[a]) })))}
+					<span>Rotation</span>
+					<span class="one"><EditValue label="Rotation" value={pinfo.rot} text={f(pinfo.rot, 1)} disabled={!!session.halt} step={1} onchange={(v) => edit('rot', v)} /><span class="unit">°</span></span>
+					<span use:tip={'The direction it faces along, as evaluated (a custom direction, or its velocity)'}>Direction</span>
+					{@render cells(['x', 'y', 'z'].map((k, a) => ({ k, text: f(pinfo.facing[a]) })))}
+					<span class="colorname" use:tip={'Red, green, blue and alpha from 0 to 1, as Molang gives them'}>
+						Color
+						<button class="sw" class:big={colorOpen} aria-expanded={colorOpen} aria-label="{colorOpen ? 'Shrink' : 'Enlarge'} the color" style:--c="rgba({pinfo.color[0]},{pinfo.color[1]},{pinfo.color[2]},{pinfo.color[3] / 255})" style:--solid="rgb({pinfo.color[0]},{pinfo.color[1]},{pinfo.color[2]})" onclick={() => (colorOpen = !colorOpen)}></button>
+					</span>
+					{@render cells(['r', 'g', 'b', 'a'].map((k, a) => ({ k, text: f(pinfo.color[a] / 255) })))}
+					<span class="sub" use:tip={'The same color as whole numbers'}>0–255</span>
+					{@render cells(['r', 'g', 'b', 'a'].map((k, a) => ({ k, text: String(pinfo.color[a]) })))}
+					<span class="sub" use:tip={'The same color as #rrggbbaa'}>hex</span>
+					<span class="one ox-code">#{pinfo.color.map((n) => n.toString(16).padStart(2, '0')).join('')}</span>
+					<span use:tip={'The part of the texture it draws, as fractions of its width and height: from (u0, v0) to (u1, v1)'}>UV</span>
+					{@render cells(['u0', 'v0', 'u1', 'v1'].map((k, a) => ({ k, text: f(pinfo.uv[a], 4) })))}
+					<span class="ox-code key" use:tip={'Four random numbers from 0 to 1, drawn when the particle spawned: `v.particle_random_1` to `v.particle_random_4`.'}>v.particle_random_N</span>
+					{@render cells(pinfo.randoms.map((n, i) => ({ k: String(i + 1), text: f(n) })))}
 				</div>
 
 				{#if pinfo.explain}
@@ -292,15 +346,12 @@
 							</button>
 						</li>
 					{:else}
-						<li class="dim">No evaluations recorded yet. Let the preview run a frame, or step.</li>
+						<li class="dim">Nothing recorded yet: run a frame, or step.</li>
 					{/each}
 				</ol>
 
 				{#if turn?.rows.length}
-					<h4>Its turn <span class="dim">(what its own expressions used in the last frame)</span></h4>
-					<p class="explain">
-						Variables belong to the emitter, and every particle takes its turn with them. Plain values are what this particle set; <span class="faint">dim ones</span> it only read, so they're whatever ran before it in that pass. Render comes after every particle's update, so a value only the update sets reads there as the last particle left it.
-					</p>
+					<h4>Its turn <Hint label="About a particle's turn" text={TURN_TIP} doc={DOC} /></h4>
 					<div class="grid turn ox-num" class:two={turn.hasRender}>
 						<span class="dim">Variable</span><span class="dim">In its update</span>{#if turn.hasRender}<span class="dim">In its render</span>{/if}
 						{#each turn.rows as r (r.name)}
@@ -313,7 +364,7 @@
 					</div>
 				{/if}
 
-				<h4>Variables <span class="dim">(shared by every particle of the emitter, as the last one left them)</span></h4>
+				<h4>Variables <Hint label="About the emitter's variables" text={`Shared by every particle of the emitter, as the last one left them. ${EDIT_TIP}`} doc={DOC} /></h4>
 				<div class="grid vars ox-num">
 					{#each Object.entries(pinfo.vars).filter(([k]) => !k.startsWith('variable.particle_') && !k.startsWith('variable.emitter_')) as [k, v] (k)}
 						<span class="ox-code">{short(k)}</span><EditValue label={short(k)} value={v} text={show(v)} disabled={!!session.halt} onchange={(x) => edit(k, x)} />
@@ -322,17 +373,17 @@
 					{/each}
 				</div>
 				{#if pinfo.temps.length}
-					<h4>Temps <span class="dim">(global in-game)</span></h4>
+					<h4>Temps</h4>
 					<div class="grid vars ox-num">
 						{#each pinfo.temps as [k, v] (k)}<span class="ox-code">{short(k)}</span><EditValue label={short(k)} value={v} text={show(v)} disabled={!!session.halt} onchange={(x) => edit(k, x)} />{/each}
 					</div>
 				{/if}
-				<p class="explain">{session.halt ? HALT_NOTE : EDIT_NOTE}</p>
+				{#if session.halt}<p class="explain">Stopped mid-frame: values can be changed once it finishes (Next frame).</p>{/if}
 			{/if}
 		{:else}
 			<div class="logbar">
 				<Toggle checked={session.logging} label="Record every evaluation" onchange={(v) => session.setLogging(v)} />
-				<span>Record every evaluation of the last frame{session.logging ? ` (${session.log.length.toLocaleString()} entries)` : ''}</span>
+				<span>Record the last frame’s evaluations{session.logging ? ` (${session.log.length.toLocaleString()})` : ''}</span>
 			</div>
 			{#if session.logging}
 				<table class="log ox-num">
@@ -351,19 +402,13 @@
 				</table>
 				{#if session.log.length > 1500}<p class="dim pad">Showing the first 1,500 evaluations.</p>{/if}
 			{:else}
-				<p class="empty">The log lists every Molang evaluation in the order the game runs them: emitter first, then each particle completely, then render preparation.</p>
+				<p class="empty">Every Molang evaluation of a frame, in the order the game runs them.</p>
 			{/if}
 		{/if}
 	{/if}
 </div>
 
 <style>
-	.vals {
-		display: flex;
-		align-items: center;
-		gap: 2px 8px;
-		flex-wrap: wrap;
-	}
 	.explain {
 		margin: 2px 10px 6px;
 		color: var(--ox-text-dim);
@@ -395,6 +440,7 @@
 	}
 	.bar {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 6px;
 		align-items: center;
 		padding: 6px 8px;
@@ -416,6 +462,7 @@
 		background: none;
 		padding: 0 8px;
 		height: 20px;
+		white-space: nowrap;
 		border-radius: 2px;
 		color: var(--ox-haze);
 		cursor: pointer;
@@ -431,6 +478,7 @@
 		height: 22px;
 		padding: 0 8px;
 		cursor: pointer;
+		white-space: nowrap;
 	}
 	.btn:hover {
 		background: var(--ox-hover);
@@ -458,6 +506,94 @@
 		gap: 2px 10px;
 		padding: 0 10px;
 	}
+	/* what the particle or emitter is right now: a name, then its values in columns that line up down the table */
+	.props {
+		display: grid;
+		grid-template-columns: max-content minmax(0, 1fr);
+		gap: 3px 16px;
+		align-items: center;
+		padding: 0 10px 2px;
+	}
+	.props > span:nth-child(odd) {
+		color: var(--ox-haze);
+		min-height: 20px;
+		line-height: 20px;
+	}
+	.props .key {
+		color: var(--ox-syn-variable);
+		font-size: 12px;
+	}
+	.cells {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 0 6px;
+		max-width: 420px;
+	}
+	.cell {
+		display: grid;
+		grid-template-columns: 18px minmax(0, 1fr);
+		align-items: center;
+		min-width: 0;
+	}
+	.cell .k {
+		color: var(--ox-text-dim);
+		font-size: 11.5px;
+	}
+	.cell .v {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.cell :global(.edit) {
+		min-width: 0;
+	}
+	/* a value on its own starts where the columns' values do */
+	.one {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding-left: 18px;
+	}
+	.one :global(.edit) {
+		min-width: 0;
+		width: 64px;
+	}
+	.unit {
+		color: var(--ox-text-dim);
+	}
+	/* a second fact about the same thing */
+	.more {
+		margin-left: 8px;
+		color: var(--ox-text-dim);
+		font-family: var(--ox-font-ui);
+		font-variation-settings: 'MONO' 0;
+	}
+	.props > .sub {
+		padding-left: 10px;
+		color: var(--ox-text-dim);
+	}
+	.colorname {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	button.sw {
+		flex: none;
+		width: 20px;
+		height: 14px;
+		padding: 0;
+		border: 1px solid var(--ox-rule-strong);
+		cursor: zoom-in;
+	}
+	/* enlarged: with its alpha over the checker on the left, opaque on the right */
+	button.sw.big {
+		width: 96px;
+		height: 48px;
+		cursor: zoom-out;
+		background:
+			linear-gradient(90deg, var(--c) 50%, var(--solid) 50%),
+			repeating-conic-gradient(#8e97ad 0 25%, #dfe5f0 0 50%) 0 0 / 12px 12px;
+	}
 	.grid > span:nth-child(odd) {
 		color: var(--ox-haze);
 	}
@@ -478,11 +614,6 @@
 	}
 	.grid.vars {
 		grid-template-columns: minmax(90px, max-content) 1fr;
-	}
-	.col {
-		display: flex;
-		gap: 6px;
-		align-items: center;
 	}
 	.sw {
 		width: 12px;

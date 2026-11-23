@@ -1,6 +1,6 @@
 {
 	"name": "@oxygen/effect",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"private": true,
 	"type": "module",
 	"description": "Effect-wide analysis: fields in evaluation order, variable data flow, faithful diagnostics",

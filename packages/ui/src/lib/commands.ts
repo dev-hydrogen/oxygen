@@ -68,6 +68,7 @@ const RUNNERS: Record<string, Runner> = {
 	'app.commands': { run: (w) => void (w.paletteOpen = !w.paletteOpen) },
 	'app.settings': { run: (w) => (w.settingsOpen ? (w.settingsOpen = false) : w.openSettings()) },
 	'app.shortcuts': { run: (w) => void (w.shortcutsOpen = !w.shortcutsOpen) },
+	'app.docs': { run: (w) => (w.docsOpen ? (w.docsOpen = false) : w.openDocs()) },
 	'app.about': { run: (w) => (w.aboutOpen ? (w.aboutOpen = false) : w.openAbout()) },
 
 	'preview.play': { run: (_w, s) => s!.togglePlay(), when: needsEffect },

@@ -62,7 +62,9 @@
 	}
 
 	function resetAll() {
-		if (confirm('Put every key back to how Oxygen comes?')) workspace.prefs.keys = {};
+		void workspace.ask({ title: 'Put every key back to how Oxygen comes?', actions: [{ id: 'cancel', label: 'Cancel', kind: 'quiet' }, { id: 'go', label: 'Reset the keys', kind: 'danger' }] }).then((a) => {
+			if (a === 'go') workspace.prefs.keys = {};
+		});
 	}
 
 	function start(id: string, replace: number | null = null) {

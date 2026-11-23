@@ -66,3 +66,62 @@ textarea {
 .ox-dock .dv-active-tab .dv-default-tab-action {
 	opacity: 0.7;
 }
+
+/* explanations on demand (lib/tip.ts): hover tips and the pinned ones a "?" opens */
+.ox-tip {
+	position: fixed;
+	inset: auto;
+	margin: 0;
+	z-index: 500;
+	width: max-content;
+	max-width: min(300px, calc(100vw - 8px));
+	padding: 7px 10px 8px;
+	background: var(--ox-float);
+	border: 1px solid var(--ox-rule-strong);
+	border-radius: var(--ox-radius-float);
+	box-shadow: var(--ox-float-shadow);
+	color: var(--ox-frost);
+	font-family: var(--ox-font-ui);
+	font-size: 12px;
+	line-height: 17px;
+	pointer-events: none;
+	overflow: visible;
+}
+.ox-tip:not([popover]):not(.open) {
+	display: none;
+}
+.ox-tip.pinned {
+	pointer-events: auto;
+	border-color: var(--ox-lox);
+}
+.ox-tip p {
+	margin: 0;
+	white-space: pre-line;
+}
+.ox-tip p + p {
+	margin-top: 6px;
+}
+.ox-tip code {
+	color: var(--ox-syn-variable);
+	font-size: 11.5px;
+}
+/* where the state lives: the file and key the game reads */
+.ox-tip-where {
+	margin-bottom: 4px;
+	color: var(--ox-haze);
+	font-size: 11px;
+	line-height: 15px;
+	overflow-wrap: anywhere;
+}
+.ox-tip-doc {
+	display: block;
+	margin-top: 6px;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--ox-lox);
+	cursor: pointer;
+}
+.ox-tip-doc:hover {
+	text-decoration: underline;
+}

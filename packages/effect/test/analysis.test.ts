@@ -168,6 +168,23 @@ describe('analyzeEffect', () => {
 	});
 });
 
+describe('temps', () => {
+	it('lists where each temp is set and read', () => {
+		const a = analyzeEffect(
+			load({
+				'minecraft:emitter_initialization': { creation_expression: 't.seed = 3; v.a = t.seed + t.given;' },
+				'minecraft:particle_initialization': { per_update_expression: 'v.b = t.seed;' },
+			}),
+		);
+		const seed = a.tempUses.find((t) => t.name === 'temp.seed')!;
+		expect(seed.writes.map((w) => w.phase)).toEqual(['setup']);
+		expect(seed.reads.map((r) => r.phase).sort()).toEqual(['particle', 'setup']);
+		// one it only reads comes from outside (a parent's event, another effect): temps are global
+		expect(a.tempUses.find((t) => t.name === 'temp.given')).toMatchObject({ writes: [], reads: [{ phase: 'setup' }] });
+		expect(a.tempInputs).toEqual(['temp.given']);
+	});
+});
+
 describe('renameVariable', () => {
 	it('renames reads, writes and a curve, keeping representation and spelling', async () => {
 		const { JsonDocument } = await import('@oxygen/format');

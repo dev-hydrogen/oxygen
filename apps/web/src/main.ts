@@ -29,7 +29,7 @@ type DirHandle = {
 type Pickers = {
 	showOpenFilePicker?: (o: unknown) => Promise<FileHandle[]>;
 	showSaveFilePicker?: (o: unknown) => Promise<FileHandle>;
-	showDirectoryPicker?: () => Promise<DirHandle>;
+	showDirectoryPicker?: (o?: unknown) => Promise<DirHandle>;
 };
 const pickers = window as unknown as Pickers;
 
@@ -89,34 +89,65 @@ interface Pack {
 	/** a file by pack-relative path */
 	get(path: string): Promise<File | null>;
 	/** the .json files under particles/ (with a handle when they can be saved in place) */
-	particles(): Promise<{ file: File; handle?: FileHandle }[]>;
+	particles(): Promise<{ file: File; path: string; handle?: FileHandle }[]>;
+	/** the paths the file browser lists */
+	list(): Promise<string[]>;
+	/** a file's handle, when the pack can be written to */
+	handle?(path: string): Promise<FileHandle | null>;
 }
 let pack: Pack | null = null;
+/** the folders of a pack the file browser lists (and its manifest) */
+const PACK_DIRS = ['particles', 'textures', 'lighting', 'color_grading'];
+const listed = (path: string) => path === 'manifest.json' || PACK_DIRS.some((d) => path.startsWith(`${d}/`));
+/** document ids of pack files opened from the file browser, so one opens once */
+const packIds = new Map<string, string>();
 
 function folderPack(root: DirHandle): Pack {
+	const handleOf = async (path: string): Promise<FileHandle | null> => {
+		const parts = path.split('/').filter(Boolean);
+		try {
+			let dir = root;
+			for (const p of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(p);
+			return await dir.getFileHandle(parts[parts.length - 1]);
+		} catch {
+			return null;
+		}
+	};
 	return {
 		name: root.name,
-		async get(path) {
-			const parts = path.split('/').filter(Boolean);
-			try {
-				let dir = root;
-				for (const p of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(p);
-				return await (await dir.getFileHandle(parts[parts.length - 1])).getFile();
-			} catch {
-				return null;
+		get: async (path) => (await (await handleOf(path))?.getFile()) ?? null,
+		handle: handleOf,
+		async list() {
+			const out: string[] = [];
+			const walk = async (dir: DirHandle, at: string, depth: number) => {
+				if (depth > 12) return;
+				for await (const h of dir.values()) {
+					if (h.name.startsWith('.')) continue;
+					if (h.kind === 'directory') await walk(h, `${at}${h.name}/`, depth + 1);
+					else out.push(`${at}${h.name}`);
+				}
+			};
+			for (const d of PACK_DIRS) {
+				try {
+					await walk(await root.getDirectoryHandle(d), `${d}/`, 0);
+				} catch {
+					// the pack has no such folder
+				}
 			}
+			if (await handleOf('manifest.json')) out.push('manifest.json');
+			return out;
 		},
 		async particles() {
-			const out: { file: File; handle?: FileHandle }[] = [];
-			const walk = async (dir: DirHandle, depth: number) => {
+			const out: { file: File; path: string; handle?: FileHandle }[] = [];
+			const walk = async (dir: DirHandle, at: string, depth: number) => {
 				if (depth > 6) return;
 				for await (const h of dir.values()) {
-					if (h.kind === 'directory') await walk(h, depth + 1);
-					else if (h.name.endsWith('.json')) out.push({ file: await h.getFile(), handle: h });
+					if (h.kind === 'directory') await walk(h, `${at}${h.name}/`, depth + 1);
+					else if (h.name.endsWith('.json')) out.push({ file: await h.getFile(), path: `${at}${h.name}`, handle: h });
 				}
 			};
 			try {
-				await walk(await root.getDirectoryHandle('particles'), 0);
+				await walk(await root.getDirectoryHandle('particles'), 'particles/', 0);
 			} catch {
 				// no particles folder
 			}
@@ -132,7 +163,8 @@ function filesPack(files: File[]): Pack {
 	return {
 		name: files[0]?.webkitRelativePath.split('/')[0] ?? 'pack',
 		get: async (path) => byPath.get(path.split('/').filter(Boolean).join('/')) ?? null,
-		particles: async () => [...byPath].filter(([p]) => p.startsWith('particles/') && p.endsWith('.json')).map(([, file]) => ({ file })),
+		list: async () => [...byPath.keys()].filter(listed),
+		particles: async () => [...byPath].filter(([p]) => p.startsWith('particles/') && p.endsWith('.json')).map(([path, file]) => ({ file, path })),
 	};
 }
 
@@ -149,15 +181,16 @@ async function readPackFile(path: string): Promise<File | null> {
 const identifierOf = (text: string) => /"identifier"\s*:\s*"([^"]+)"/.exec(text)?.[1] ?? null;
 
 /** identifier → effect in the opened pack's particles folder (built on first use) */
-let packEffects: Promise<Map<string, { name: string; text: string; handle?: FileHandle }>> | null = null;
-function packEffectIndex(): Promise<Map<string, { name: string; text: string; handle?: FileHandle }>> {
+type PackEffect = { name: string; path: string; text: string; handle?: FileHandle };
+let packEffects: Promise<Map<string, PackEffect>> | null = null;
+function packEffectIndex(): Promise<Map<string, PackEffect>> {
 	if (!pack) return Promise.resolve(new Map());
 	packEffects ??= (async () => {
-		const index = new Map<string, { name: string; text: string; handle?: FileHandle }>();
-		for (const { file, handle } of await pack!.particles()) {
+		const index = new Map<string, PackEffect>();
+		for (const { file, path, handle } of await pack!.particles()) {
 			const text = await file.text();
 			const id = identifierOf(text);
-			if (id) index.set(id, { name: file.name, text, handle });
+			if (id) index.set(id, { name: file.name, path, text, handle });
 		}
 		return index;
 	})();
@@ -184,7 +217,7 @@ const host: Host = {
 	async openFiles(): Promise<OpenedFile[]> {
 		if (pickers.showOpenFilePicker) {
 			try {
-				const picked = await pickers.showOpenFilePicker({ multiple: true, types: pickerTypes });
+				const picked = await pickers.showOpenFilePicker({ id: 'oxygen-effects', multiple: true, types: pickerTypes });
 				return Promise.all(picked.map(async (h) => ({ file: { name: h.name, id: remember(h) }, text: await (await h.getFile()).text() })));
 			} catch {
 				return [];
@@ -214,7 +247,7 @@ const host: Host = {
 	// without a save picker there's nowhere to choose: Download a copy takes its place (and its shortcut)
 	saveAs: pickers.showSaveFilePicker
 		? async (file: FileRef, text: string): Promise<FileRef | null> => {
-				const h = await pickers.showSaveFilePicker!({ suggestedName: file.name, types: pickerTypes });
+				const h = await pickers.showSaveFilePicker!({ id: 'oxygen-effects', suggestedName: file.name, types: pickerTypes });
 				await writeTo(h, text);
 				return { name: h.name, id: remember(h) };
 			}
@@ -249,10 +282,39 @@ const host: Host = {
 			.map(([path, load]) => ({ name: path.split('/').pop()!.replace('.particle.json', ''), load: load as () => Promise<string> }))
 			.sort((a, b) => a.name.localeCompare(b.name));
 	},
+	async listPack() {
+		if (!pack) return null;
+		// read again: a file saved since the last look may have another identifier
+		packEffects = null;
+		const identifiers = Object.fromEntries([...(await packEffectIndex())].map(([id, e]) => [e.path, id]));
+		return { name: pack.name, files: await pack.list(), identifiers };
+	},
+	async openPackFile(path: string) {
+		const f = await pack?.get(path);
+		if (!f) return null;
+		let id = packIds.get(path);
+		if (!id) {
+			// a pack that can't be written to: its effect saves like any other unsaved document
+			const h = await pack!.handle?.(path);
+			id = h ? remember(h) : `pack:${path}`;
+			packIds.set(path, id);
+		}
+		return { file: { name: f.name, id }, text: await f.text() };
+	},
+	async closePack() {
+		pack = null;
+		packEffects = null;
+		packIds.clear();
+		for (const url of fileTextures.values()) URL.revokeObjectURL(url);
+		fileTextures.clear();
+	},
 	async readPackText(path: string) {
 		// readPackFile tries the name as given last, after .png/.tga
 		const f = await readPackFile(path);
 		return f ? f.text() : null;
+	},
+	async effectIds() {
+		return [...(await packEffectIndex()).keys()].sort();
 	},
 	async findEffect(identifier: string) {
 		const inPack = (await packEffectIndex()).get(identifier);
@@ -313,7 +375,8 @@ const host: Host = {
 		let next: Pack | null = null;
 		if (pickers.showDirectoryPicker) {
 			try {
-				next = folderPack(await pickers.showDirectoryPicker());
+				// a named picker opens where it was last used
+				next = folderPack(await pickers.showDirectoryPicker({ id: 'oxygen-pack' }));
 			} catch {
 				return null;
 			}
@@ -325,6 +388,7 @@ const host: Host = {
 		}
 		pack = next;
 		packEffects = null;
+		packIds.clear();
 		for (const url of fileTextures.values()) URL.revokeObjectURL(url);
 		fileTextures.clear();
 		return pack.name;

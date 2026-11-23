@@ -11,6 +11,7 @@
 	import Toggle from '../fields/Toggle.svelte';
 	import { menu, type MenuItem } from '../../lib/context-menu.svelte';
 	import { parse as parseJsonc } from 'jsonc-parser';
+	import { tip } from '../../lib/tip';
 
 	interface Props {
 		session: EffectSession;
@@ -54,7 +55,7 @@
 		return c.valueShape === 'molang-or-vec' ? 1 : c.valueShape === 'plane' ? [0, 1, 0, 0] : c.valueShape === 'blocks' ? ['minecraft:water'] : {};
 	}
 
-	/** Swap a group member (Burst → Steady rate): each keeps its own values, a new one starts from the shared fields */
+	/** Swap a group member (Instant → Steady rate): each keeps its own values, a new one starts from the shared fields */
 	function switchTo(id: string) {
 		if (id === component.id) return;
 		const next = COMPONENTS.find((c) => c.id === id)!;
@@ -107,22 +108,21 @@
 			<span class="chev" aria-hidden="true"></span>
 		{/if}
 		{#if enabled && siblings.length > 1}
-			<div class="switch">
+			<div class="switch" use:tip={{ where: component.id, text: component.help }}>
 				<Select value={component.id} label="{component.group} type" options={siblings.map((s) => ({ value: s.id, label: s.label, help: s.help }))} onchange={switchTo} />
 			</div>
 		{:else}
-			<h3 title={component.help}>{title}</h3>
+			<h3 use:tip={enabled || !component.group ? { where: component.id, text: component.help } : null}>{title}</h3>
 		{/if}
-		{#if problems.length}<span class="flag {problems.some((p) => p.severity === 'error') ? 'error' : problems.some((p) => p.severity === 'warning') ? 'warning' : 'info'}" title={problems.map((p) => p.message).join('\n')}></span>{/if}
-		<span class="onoff" title={enabled ? `Turn off ${component.label} (its values come back when you turn it on)` : `Turn on ${title}`}>
+		{#if problems.length}<span class="flag {problems.some((p) => p.severity === 'error') ? 'error' : problems.some((p) => p.severity === 'warning') ? 'warning' : 'info'}" use:tip={problems.map((p) => p.message).join('\n\n')}></span>{/if}
+		<span class="onoff" use:tip={enabled ? 'Off keeps its values: turning it on again restores them' : null}>
 			<Toggle checked={enabled} label="{title} on" onchange={setEnabled} />
 		</span>
 	</header>
 	{#if enabled && open}
-		<p class="help">{component.help}</p>
 		{#if component.id === 'minecraft:particle_initial_speed'}
 			{@const f = component.fields[0]}
-			<FieldRow label={speedIsVector ? 'Velocity' : 'Speed'} phase="spawn" help={f.help} order={orderOf(session, speedIsVector ? joinPath(path, 0) : path)} problems={problemsAt(session, path)} stacked={speedIsVector}>
+			<FieldRow label={speedIsVector ? 'Velocity' : 'Speed'} phase="spawn" help={f.help} where={component.id} order={orderOf(session, speedIsVector ? joinPath(path, 0) : path)} problems={problemsAt(session, path)} stacked={speedIsVector}>
 				<div class="col">
 					<Select
 						value={speedIsVector ? 'vector' : 'speed'}
@@ -218,13 +218,6 @@
 	button.chev:hover {
 		background: var(--ox-hover);
 		color: var(--ox-frost);
-	}
-	.help {
-		margin: -4px 10px 4px 28px;
-		color: var(--ox-text-dim);
-		font-size: 11.5px;
-		line-height: 16px;
-		max-width: 60ch;
 	}
 	.flag {
 		width: 6px;

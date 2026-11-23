@@ -49,13 +49,12 @@ export const SETTINGS: SettingRow[] = [
 		section: 'general',
 		group: 'Editing',
 		key: 'inspectorView',
-		label: 'Inspector shows fields',
-		help: 'By category groups components as the format does; by phase follows the order the game evaluates them in',
+		label: 'Inspector groups fields',
 		control: {
 			type: 'select',
 			options: [
 				{ value: 'categories', label: 'By category' },
-				{ value: 'phases', label: 'By phase' },
+				{ value: 'phases', label: 'By evaluation phase' },
 			],
 		},
 	},
@@ -100,13 +99,13 @@ export const SETTINGS: SettingRow[] = [
 		group: 'A newly opened effect',
 		key: 'spawnMode',
 		label: 'Is spawned by',
-		help: 'How the game would spawn it: the particle cap, looping and the queries available depend on it. An effect whose scene says otherwise keeps its own.',
+		help: 'Looping and the queries available depend on it. An effect whose scene says otherwise keeps its own.',
 		control: {
 			type: 'select',
 			options: [
 				{ value: 'command', label: '/particle' },
 				{ value: 'script', label: 'Script API' },
-				{ value: 'entity', label: 'Entity' },
+				{ value: 'entity', label: 'Animation' },
 			],
 		},
 	},
@@ -140,8 +139,8 @@ export const SETTINGS: SettingRow[] = [
 	// viewport
 	{ section: 'viewport', group: 'Camera', key: 'fov', label: 'Field of view', help: 'Vertical, in degrees. A saved view brings its own.', control: { type: 'range', min: 30, max: 110, step: 1, format: (v) => `${v}°` } },
 	{ section: 'viewport', group: 'Camera', key: 'turnSpeed', label: 'Turning speed', help: 'Dragging to orbit, and right-dragging to look around', control: { type: 'range', min: 0.25, max: 3, step: 0.05, format: times } },
-	{ section: 'viewport', group: 'Camera', key: 'invertY', label: 'Invert up and down', help: 'Dragging up turns the camera down', control: { type: 'toggle' } },
-	{ section: 'viewport', group: 'Camera', key: 'zoomSpeed', label: 'Wheel speed', help: 'How far a wheel notch moves toward what’s under the cursor', control: { type: 'range', min: 0.25, max: 3, step: 0.05, format: times } },
+	{ section: 'viewport', group: 'Camera', key: 'invertY', label: 'Invert up and down', control: { type: 'toggle' } },
+	{ section: 'viewport', group: 'Camera', key: 'zoomSpeed', label: 'Wheel speed', control: { type: 'range', min: 0.25, max: 3, step: 0.05, format: times } },
 	{ section: 'viewport', group: 'Camera', key: 'flySpeed', label: 'Flying speed', help: 'Holding the fly keys (Keyboard › Camera)', control: { type: 'range', min: 0.25, max: 5, step: 0.05, format: times } },
 	{ section: 'viewport', group: 'Camera', key: 'fastFactor', label: 'Flying faster multiplies it by', control: { type: 'range', min: 1, max: 10, step: 0.5, format: times } },
 	{
@@ -180,7 +179,7 @@ export const SETTINGS: SettingRow[] = [
 	{ section: 'viewport', group: 'Screenshots and recordings', key: 'videoSize', label: 'Video size', help: 'Its longest side. MP4 where the browser can make it, else WebM; always with the background.', control: { type: 'select', options: VIDEO_SIZES.map((n) => ({ value: String(n), label: `${n} px` })) } },
 	{ section: 'viewport', group: 'Screenshots and recordings', key: 'videoFps', label: 'Video frame rate', control: { type: 'select', options: VIDEO_RATES.map((n) => ({ value: String(n), label: `${n} frames a second` })) } },
 	{ section: 'viewport', group: 'Screenshots and recordings', key: 'recordCamera', label: 'Camera while recording', help: `Moves from the view the recording starts at, round what it looks at, over the recording's length (${CAMERA_MOVE_SECONDS} s a move when it runs until the effect ends)`, control: { type: 'select', options: CAMERA_MOVES.map((m) => ({ value: m.id, label: m.label })) } },
-	{ section: 'viewport', group: 'Screenshots and recordings', key: 'watermark', label: 'Oxygen watermark', help: 'A small Oxygen mark in the bottom right of screenshots, GIFs and videos', control: { type: 'toggle' } },
+	{ section: 'viewport', group: 'Screenshots and recordings', key: 'watermark', label: 'Oxygen watermark', help: 'In the bottom right', control: { type: 'toggle' } },
 	{ section: 'viewport', group: 'Helper limits', key: 'gizmoLimits.facing', label: 'Facing axes on at most', help: 'Past this, a sample of the particles gets axes. Each keeps them while it lives.', control: { type: 'select', options: GIZMO_LIMIT_CHOICES.facing.map((n) => ({ value: String(n), label: `${n.toLocaleString()} particles` })) } },
 	{ section: 'viewport', group: 'Helper limits', key: 'gizmoLimits.velocity', label: 'Velocity arrows on at most', help: 'Past this, a sample of the particles gets an arrow. Each keeps it while it lives.', control: { type: 'select', options: GIZMO_LIMIT_CHOICES.velocity.map((n) => ({ value: String(n), label: `${n.toLocaleString()} particles` })) } },
 	{ section: 'viewport', group: 'Helper limits', key: 'gizmoLimits.emitters', label: 'Emitter markers for at most', control: { type: 'select', options: GIZMO_LIMIT_CHOICES.emitters.map((n) => ({ value: String(n), label: `${n.toLocaleString()} emitters` })) } },

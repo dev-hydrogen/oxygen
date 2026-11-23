@@ -105,11 +105,11 @@ export const COMPONENTS: ComponentInfo[] = [
 	},
 	{
 		id: 'minecraft:emitter_rate_instant',
-		label: 'Burst',
+		label: 'Instant',
 		category: 'emitter',
 		group: 'rate',
 		help: 'Spawns all particles at once at the start of each loop. Fires even when active_time is 0.',
-		fields: [{ key: 'num_particles', label: 'Particles', phase: 'emitter', kind: { type: 'molang', default: 10 }, help: 'How many particles the burst spawns. The game caps live particles per emitter (1000 for /particle and script spawns).' }],
+		fields: [{ key: 'num_particles', label: 'Particles', phase: 'emitter', kind: { type: 'molang', default: 10 }, help: 'How many particles it spawns at once. The game caps live particles per emitter at 1,000.' }],
 	},
 	{
 		id: 'minecraft:emitter_rate_steady',
@@ -156,7 +156,7 @@ export const COMPONENTS: ComponentInfo[] = [
 		group: 'lifetime',
 		help: 'The emitter is active while the activation expression is non-zero and expires when the expiration expression is non-zero.',
 		fields: [
-			{ key: 'activation_expression', label: 'Active while', phase: 'emitter', kind: { type: 'molang', default: 1 }, help: 'Spawns while this is non-zero. A burst fires each time it turns on.' },
+			{ key: 'activation_expression', label: 'Active while', phase: 'emitter', kind: { type: 'molang', default: 1 }, help: 'Spawns while this is non-zero. An instant rate fires each time it turns on.' },
 			{ key: 'expiration_expression', label: 'Expire when', phase: 'emitter', kind: { type: 'molang', default: 0 }, help: 'The emitter expires the first update this is non-zero.' },
 		],
 	},
@@ -388,7 +388,7 @@ export function componentInsertionIndex(id: string): (keys: string[]) => number 
 
 export const MATERIALS: { value: string; label: string; help: string }[] = [
 	{ value: 'particles_alpha', label: 'Cutout', help: 'Texels below half alpha are discarded; the rest are opaque. Writes depth.' },
-	{ value: 'particles_blend', label: 'Translucent', help: 'Alpha blended, drawn back to front. Never hides other particles.' },
+	{ value: 'particles_blend', label: 'Blend', help: 'Alpha blended, drawn back to front. Never hides other particles.' },
 	{ value: 'particles_add', label: 'Additive', help: 'Adds light. Never hides other particles.' },
 	{ value: 'particles_opaque', label: 'Opaque', help: 'Ignores alpha entirely.' },
 ];

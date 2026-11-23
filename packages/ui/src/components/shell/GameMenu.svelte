@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Hint from '../fields/Hint.svelte';
 	import type { DeployPaths, GameLink, GameStatus } from '../../host';
 	import type { Workspace } from '../../state/workspace.svelte';
 	import { flushEdits } from '../../lib/flush';
@@ -193,11 +194,11 @@
 			</div>
 			{#if workspace.active?.scenario}
 				<p class="dim">
-					Spawns with scenario “{workspace.active.scenario.name}” variables through the Oxygen Link behavior pack, which deploys with your pack. Turn it on once per world: Edit world → Behavior packs → Available → Oxygen Link. Minecraft lists new packs after it rescans, which opening that screen does.
+					Scenario “{workspace.active.scenario.name}” spawns through the Oxygen Link behavior pack.
+					<Hint label="About Oxygen Link" text="It deploys with your pack. Turn it on once per world: Edit world → Behavior packs → Available → Oxygen Link. Minecraft lists new packs after opening that screen." doc="guide#testing-in-minecraft-desktop-app" />
 				</p>
 			{/if}
 			{#if note}<p class="note" role="status">{note}</p>{/if}
-			<p class="dim">The game's content log shows up in Problems as “Game” entries for open files.</p>
 		</div>
 	{/if}
 </div>

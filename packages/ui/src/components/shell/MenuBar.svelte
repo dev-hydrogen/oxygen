@@ -2,11 +2,12 @@
 	import { tick } from 'svelte';
 	import type { FileRef } from '../../host';
 	import { SPAWN_MODES } from '../../state/session.svelte';
-	import { LAYOUTS, type Workspace } from '../../state/workspace.svelte';
+	import type { Workspace } from '../../state/workspace.svelte';
 	import { closeEffect, copyShareLink, openExample, save } from '../../lib/actions';
 	import { pickTexture } from '../../lib/import-texture';
 	import { CAMERA_MOVES } from '../../lib/camera-moves';
 	import { REPO } from '../../lib/about';
+	import { layoutMenuItems } from '../../lib/layout-menu';
 
 	/** File / Edit / View / Preview / Examples / Help, like other editors: every panel can be brought back from View */
 	interface Props {
@@ -84,15 +85,16 @@
 
 	function viewItems(): Item[] {
 		const items: Item[] = [{ heading: 'Panels' }];
-		for (const [id, p] of Object.entries(panels)) {
+		const toggle = (id: string, label: string): Item => {
 			const shown = workspace.openPanels.includes(id);
-			items.push({ label: p.title, checked: shown, keys: k(`view.panel.${id}`), run: () => (shown ? workspace.hide(id) : workspace.show(id)) });
-		}
-		items.push({ separator: true }, { heading: 'Reset the layout to' });
-		for (const l of LAYOUTS) items.push({ label: l.label, title: l.help, keys: k(`view.layout.${l.id}`), run: () => void (workspace.layoutRequest = { name: l.id, at: Date.now() }) });
-		items.push({ separator: true }, { heading: 'Inspector' });
-		items.push({ label: 'By category', checked: workspace.inspectorView === 'categories', keys: k('view.inspector.categories'), run: () => void (workspace.inspectorView = 'categories') });
-		items.push({ label: 'By phase', checked: workspace.inspectorView === 'phases', keys: k('view.inspector.phases'), run: () => void (workspace.inspectorView = 'phases') });
+			return { label, checked: shown, keys: k(`view.panel.${id}`), run: () => (shown ? workspace.hide(id) : workspace.show(id)) };
+		};
+		const all = Object.entries(panels);
+		for (const [id, p] of all) if (!id.startsWith('cat-')) items.push(toggle(id, p.title));
+		items.push({ separator: true }, { heading: 'Inspector categories in their own tab' });
+		for (const [id, p] of all) if (id.startsWith('cat-')) items.push(toggle(id, p.title.replace(/^Inspector: /, '')));
+		// the same list the layout button in the top bar opens
+		items.push({ separator: true }, ...layoutMenuItems(workspace));
 		return items;
 	}
 
@@ -145,8 +147,7 @@
 			{ label: 'Keyboard shortcuts', keys: k('app.shortcuts'), run: () => void (workspace.shortcutsOpen = true) },
 			{ label: 'All commands', keys: k('app.commands'), run: () => void (workspace.paletteOpen = true) },
 			{ separator: true },
-			{ label: 'Oxygen guide', href: `${REPO}/blob/main/docs/guide.md` },
-			{ label: 'How faithful the preview is', href: `${REPO}/blob/main/docs/accuracy.md` },
+			{ label: 'Documentation', keys: k('app.docs'), run: () => workspace.openDocs('guide') },
 			{ label: 'Bedrock particle documentation', href: 'https://learn.microsoft.com/minecraft/creator/documents/particleeffects' },
 			{ label: 'Molang reference', href: 'https://learn.microsoft.com/minecraft/creator/reference/content/molangreference/' },
 			{ separator: true },

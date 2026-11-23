@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { createDockview, type AddPanelPositionOptions, type DockviewApi } from 'dockview-core';
 	import { mount, onDestroy, onMount, unmount, type Component } from 'svelte';
-	import type { LayoutName, Workspace } from '../state/workspace.svelte';
+	import { CATEGORIES } from '@oxygen/format';
+	import { LAYOUTS, type LayoutName, type Workspace } from '../state/workspace.svelte';
+	import { setDocsOpener } from '../lib/tip';
 	import { bindMolangKeys, handleKey } from '../lib/keyboard';
 	import { toAccelerator } from '../lib/keys';
 	import ContextPanel from './panels/ContextPanel.svelte';
@@ -15,7 +17,7 @@
 	import VibrantPanel from './panels/VibrantPanel.svelte';
 	import ExpressionPanel from './panels/ExpressionPanel.svelte';
 	import InspectorPanel from './panels/InspectorPanel.svelte';
-	import Outliner from './panels/Outliner.svelte';
+	import FilesPanel from './panels/FilesPanel.svelte';
 	import Problems from './panels/Problems.svelte';
 	import SourcePanel from './panels/SourcePanel.svelte';
 	import Viewport from './panels/Viewport.svelte';
@@ -28,6 +30,8 @@
 	import RenameDialog from './shell/RenameDialog.svelte';
 	import ShortcutsDialog from './shell/ShortcutsDialog.svelte';
 	import SettingsDialog from './shell/SettingsDialog.svelte';
+	import DocsDialog from './shell/DocsDialog.svelte';
+	import AskDialog from './shell/AskDialog.svelte';
 	import AboutDialog from './shell/AboutDialog.svelte';
 	import ContextMenu from './shell/ContextMenu.svelte';
 
@@ -39,10 +43,14 @@
 	let dockEl: HTMLDivElement;
 	let api: DockviewApi | null = null;
 
-	const PANELS: Record<string, { title: string; component: Component<{ workspace: Workspace }> }> = {
+	/** `tab`: what its tab says, when that's shorter than its name in menus; `props`: what it shows of its component */
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const PANELS: Record<string, { title: string; tab?: string; component: Component<any>; props?: Record<string, unknown> }> = {
 		viewport: { title: 'Viewport', component: Viewport },
 		inspector: { title: 'Inspector', component: InspectorPanel },
-		outliner: { title: 'Outliner', component: Outliner },
+		// the pack's files, where the host can list them (VS Code has its own Explorer)
+		// svelte-ignore state_referenced_locally
+		...(workspace.host.listPack ? { files: { title: 'Files', component: FilesPanel } } : {}),
 		expression: { title: 'Expression', component: ExpressionPanel },
 		problems: { title: 'Problems', component: Problems },
 		context: { title: 'Context', component: ContextPanel },
@@ -56,6 +64,8 @@
 		scene: { title: 'Scene', component: ScenePanel },
 		texture: { title: 'Texture', component: TexturePanel },
 		vibrant: { title: 'Vibrant Visuals', component: VibrantPanel },
+		// each Inspector category can be a panel of its own, to move, dock and close
+		...Object.fromEntries(CATEGORIES.map((c) => [`cat-${c.id}`, { title: `Inspector: ${c.label}`, tab: c.label, component: InspectorPanel, props: { category: c.id } }])),
 	};
 	// every panel gets a command keys can be bound to
 	// svelte-ignore state_referenced_locally
@@ -64,7 +74,7 @@
 	function defaultLayout(a: DockviewApi) {
 		a.addPanel({ id: 'viewport', component: 'viewport', title: 'Viewport' });
 		a.addPanel({ id: 'inspector', component: 'inspector', title: 'Inspector', position: { referencePanel: 'viewport', direction: 'right' }, initialWidth: 420 });
-		a.addPanel({ id: 'outliner', component: 'outliner', title: 'Outliner', position: { referencePanel: 'viewport', direction: 'left' }, initialWidth: 210 });
+		if (PANELS.files) a.addPanel({ id: 'files', component: 'files', title: 'Files', position: { referencePanel: 'viewport', direction: 'left' }, initialWidth: 240 });
 		a.addPanel({ id: 'expression', component: 'expression', title: 'Expression', position: { referencePanel: 'viewport', direction: 'below' }, initialHeight: 230 });
 		a.addPanel({ id: 'problems', component: 'problems', title: 'Problems', position: { referencePanel: 'expression', direction: 'within' }, inactive: true });
 		a.addPanel({ id: 'context', component: 'context', title: 'Context', position: { referencePanel: 'expression', direction: 'within' }, inactive: true });
@@ -76,23 +86,23 @@
 		a.addPanel({ id: 'debug', component: 'debug', title: 'Debug', position: { referencePanel: 'expression', direction: 'within' }, inactive: true });
 		a.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', position: { referencePanel: 'expression', direction: 'within' }, inactive: true });
 		a.addPanel({ id: 'source', component: 'source', title: 'Source', position: { referencePanel: 'expression', direction: 'within' }, inactive: true });
-		a.addPanel({ id: 'scene', component: 'scene', title: 'Scene', position: { referencePanel: 'outliner', direction: 'below' } });
+		a.addPanel({ id: 'scene', component: 'scene', title: 'Scene', position: { referencePanel: 'expression', direction: 'within' }, inactive: true });
 		a.addPanel({ id: 'vibrant', component: 'vibrant', title: 'Vibrant Visuals', position: { referencePanel: 'expression', direction: 'within' }, inactive: true });
 		// initialWidth/Height only hint; set the starting sizes explicitly
 		a.getPanel('inspector')?.group.api.setSize({ width: 420 });
-		a.getPanel('outliner')?.group.api.setSize({ width: 210 });
+		a.getPanel('files')?.group.api.setSize({ width: 240 });
 		a.getPanel('expression')?.group.api.setSize({ height: 230 });
 	}
 
 	/** The file as text, full width, with the preview floating in a corner (drag or close it) */
 	function codeLayout(a: DockviewApi) {
 		a.addPanel({ id: 'source', component: 'source', title: 'Source' });
-		a.addPanel({ id: 'outliner', component: 'outliner', title: 'Outliner', position: { referencePanel: 'source', direction: 'left' } });
+		if (PANELS.files) a.addPanel({ id: 'files', component: 'files', title: 'Files', position: { referencePanel: 'source', direction: 'left' } });
 		a.addPanel({ id: 'problems', component: 'problems', title: 'Problems', position: { referencePanel: 'source', direction: 'below' } });
 		a.addPanel({ id: 'context', component: 'context', title: 'Context', position: { referencePanel: 'problems', direction: 'within' }, inactive: true });
 		a.addPanel({ id: 'expression', component: 'expression', title: 'Expression', position: { referencePanel: 'problems', direction: 'within' }, inactive: true });
 		a.addPanel({ id: 'viewport', component: 'viewport', title: 'Viewport', floating: { position: { bottom: 48, right: 24 }, width: 460, height: 320 } });
-		a.getPanel('outliner')?.group.api.setSize({ width: 200 });
+		a.getPanel('files')?.group.api.setSize({ width: 220 });
 		a.getPanel('problems')?.group.api.setSize({ height: 190 });
 		a.getPanel('source')?.api.setActive();
 	}
@@ -163,22 +173,48 @@
 		else if (name === 'curves') curvesLayout(api);
 		else if (name === 'look') lookLayout(api);
 		else defaultLayout(api);
+		workspace.layoutName = name;
+		workspace.updateSettings({ layoutName: name });
 	}
 
 	/** the tool tabs that share the group below the viewport */
-	const TOOL_TABS = ['expression', 'problems', 'context', 'curves', 'events', 'texture', 'graph', 'pipeline', 'debug', 'timeline', 'source', 'vibrant'];
+	const TOOL_TABS = ['expression', 'problems', 'context', 'curves', 'events', 'texture', 'graph', 'pipeline', 'debug', 'timeline', 'source', 'scene', 'vibrant'];
 
 	/** Where a closed panel comes back: the side columns to their side, the tool tabs into their group */
 	function homeOf(a: DockviewApi, id: string): { position?: AddPanelPositionOptions; size?: { width?: number; height?: number } } {
 		const docked = (p: string) => a.getPanel(p)?.group.api.location.type === 'grid';
 		// the side columns run the window's full height, at its edges
 		if (id === 'inspector') return { position: { direction: 'right' }, size: { width: 420 } };
-		if (id === 'outliner') return docked('scene') ? { position: { referencePanel: 'scene', direction: 'above' } } : { position: { direction: 'left' }, size: { width: 210 } };
-		if (id === 'scene') return docked('outliner') ? { position: { referencePanel: 'outliner', direction: 'below' } } : { position: { direction: 'left' }, size: { width: 210 } };
+		if (id === 'files') return { position: { direction: 'left' }, size: { width: 240 } };
+		// a category out of the Inspector: with the others already out, else under the Inspector, so both show
+		if (id.startsWith('cat-')) {
+			const other = a.panels.find((p) => p.id.startsWith('cat-') && p.id !== id && p.group.api.location.type === 'grid');
+			if (other) return { position: { referencePanel: other.id, direction: 'within' } };
+			return docked('inspector') ? { position: { referencePanel: 'inspector', direction: 'below' } } : { position: { direction: 'right' }, size: { width: 420 } };
+		}
 		const tab = TOOL_TABS.find((p) => p !== id && docked(p));
 		if (id === 'viewport') return tab ? { position: { referencePanel: tab, direction: 'above' } } : {};
 		if (tab) return { position: { referencePanel: tab, direction: 'within' } };
 		return docked('viewport') ? { position: { referencePanel: 'viewport', direction: 'below' }, size: { height: 230 } } : {};
+	}
+
+	/**
+	 * A layout kept from before the Outliner went: the file browser takes its place (where there is one), and the
+	 * Scene, which sat under it, joins the tool tabs. Panels this Oxygen doesn't have are closed.
+	 */
+	function bringUpToDate(a: DockviewApi) {
+		const old = a.getPanel('outliner');
+		if (old) {
+			if (PANELS.files && !a.getPanel('files')) a.addPanel({ id: 'files', component: 'files', title: 'Files', position: { referencePanel: 'outliner', direction: 'within' } });
+			const scene = a.getPanel('scene');
+			const tab = TOOL_TABS.map((p) => a.getPanel(p)).find((p) => p && p.id !== 'scene' && p.group.api.location.type === 'grid');
+			if (scene && tab && scene.group !== tab.group) {
+				const active = tab.group.activePanel;
+				scene.api.moveTo({ group: tab.group });
+				active?.api.setActive();
+			}
+		}
+		for (const p of [...a.panels]) if (!PANELS[p.id]) p.api.close();
 	}
 
 	/** Show a panel, re-adding it where it belongs if the user closed it */
@@ -188,7 +224,7 @@
 		if (p) return p.api.setActive();
 		if (!PANELS[id]) return;
 		const home = homeOf(api, id);
-		const added = api.addPanel({ id, component: id, title: PANELS[id].title, floating: false, ...(home.position ? { position: home.position } : {}) });
+		const added = api.addPanel({ id, component: id, title: PANELS[id].tab ?? PANELS[id].title, floating: false, ...(home.position ? { position: home.position } : {}) });
 		if (home.size) added.group.api.setSize(home.size);
 	}
 
@@ -206,7 +242,7 @@
 						const def = PANELS[options.name];
 						if (!def) return;
 						const show = () => {
-							instance ??= mount(PanelHost, { target: element, props: { component: def.component, workspace, title: def.title } });
+							instance ??= mount(PanelHost, { target: element, props: { component: def.component, workspace, title: def.title, props: def.props } });
 						};
 						// a panel behind another tab is built when it's first shown, so opening an editor only
 						// pays for what's on screen
@@ -241,9 +277,12 @@
 		void workspace.loadSettings().then((settings) => {
 			if (restored || !api) return;
 			const layout = settings.layout;
+			const named = LAYOUTS.find((l) => l.id === settings.layoutName);
+			if (named) workspace.layoutName = named.id;
 			if (layout) {
 				try {
 					api.fromJSON(layout as Parameters<DockviewApi['fromJSON']>[0]);
+					bringUpToDate(api);
 					restored = true;
 				} catch {
 					api.clear();
@@ -257,6 +296,8 @@
 			});
 		});
 		window.addEventListener('keydown', onKey);
+		// a hint's Documentation link opens the page here
+		setDocsOpener((section) => workspace.openDocs(section));
 	});
 
 	$effect(() => {
@@ -276,6 +317,7 @@
 
 	onDestroy(() => {
 		window.removeEventListener('keydown', onKey);
+		setDocsOpener(null);
 		api?.dispose();
 	});
 
@@ -316,6 +358,8 @@
 	<ShortcutsDialog {workspace} />
 	<SettingsDialog {workspace} />
 	<AboutDialog {workspace} />
+	<DocsDialog {workspace} />
+	<AskDialog {workspace} />
 	<ContextMenu />
 </div>
 

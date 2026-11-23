@@ -52,8 +52,17 @@ const host: Host = {
 	copyFile: (path) => desk.copyFile(path),
 	revealFile: (path) => desk.revealFile(path),
 	filePath: (file) => (file.id && !file.id.startsWith('example:') ? file.id : null),
+	effectIds: (file) => desk.effectIds(file?.id ?? null),
 	findEffect: (identifier) => desk.findEffect(app.workspace.active?.file.id ?? null, identifier),
 	parentInputs: (identifier, file) => desk.parentInputs(file.id, identifier),
+	listPack: () => desk.listPack(),
+	closePack: () => desk.closePack(),
+	async openPackFile(path) {
+		const f = await desk.openPackFile(path);
+		if (!f) return null;
+		desk.watch(f.path);
+		return { file: { name: f.name, id: f.path }, text: f.text };
+	},
 	async openEffect(identifier) {
 		const f = await desk.openEffect(app.workspace.active?.file.id ?? null, identifier);
 		if (!f) return null;

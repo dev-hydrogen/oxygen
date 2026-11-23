@@ -57,6 +57,8 @@ export interface DesktopApi {
 	/** show a file in the system's file manager, selected */
 	revealFile(path: string): void;
 	findEffect(file: string | null, identifier: string): Promise<string | null>;
+	/** identifiers of the effects in the file's pack (else the opened pack) */
+	effectIds(file: string | null): Promise<string[]>;
 	/** the pack file defining `identifier` (next to `file`), read for opening */
 	openEffect(file: string | null, identifier: string): Promise<DesktopFile | null>;
 	/** variables the pack's effects set, in their pre-effects, for `identifier` (variable → parents) */
@@ -68,6 +70,11 @@ export interface DesktopApi {
 	/** recently used files, newest first */
 	recent(): Promise<{ path: string; name: string; folder: string }[]>;
 	openPath(path: string): Promise<DesktopFile | null>;
+	/** the opened pack (null with none): its folder, and the files of the folders Oxygen uses */
+	listPack(): Promise<{ name: string; root: string; files: string[]; identifiers: Record<string, string> } | null>;
+	/** one of the opened pack's files, read for opening */
+	openPackFile(path: string): Promise<DesktopFile | null>;
+	closePack(): Promise<void>;
 	/** the files open now (restored at the next start) */
 	setOpenFiles(paths: string[]): void;
 	watch(path: string): void;

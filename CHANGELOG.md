@@ -1,5 +1,92 @@
 # Changelog
 
+## Oxygen 0.4.0
+
+### Added
+
+- A file browser in the web and desktop apps: the *Files* panel, down the left side, lists the resource pack
+  opened with *File › Open resource pack folder* (its particles, textures, lighting and colour grading, and the
+  manifest). Effects are listed by identifier, and *Filter files* matches identifiers and file names. A click on
+  a texture shows it at a readable size, with *Use as texture* for the effect in front; a click on a file
+  Vibrant Visuals reads shows its text. The desktop app opens the same pack again next time. VS Code keeps its
+  own Explorer.
+  <br><img src="https://github.com/dev-hydrogen/oxygen/raw/main/docs/media/0.4.0/files.png" width="420" alt="The Files panel with a texture shown">
+- Tabs for a look, as in VS Code: one click on a particle file opens it in a tab the next file you click takes
+  over (its name is slanted). Double-click the file or the tab, edit the effect or save it, and it stays.
+- The Vibrant Visuals panel edits the three pack files Vibrant Visuals draws a particle with, each with the
+  file's own keys and values and the file's text beside the controls. Nothing is written until that file's
+  *Save to pack*. A file the pack already has keeps its formatting and everything Oxygen doesn't edit; a pack
+  without the file gets a new one.
+  <br><img src="https://github.com/dev-hydrogen/oxygen/raw/main/docs/media/0.4.0/vibrant.png" width="520" alt="The Vibrant Visuals panel: a texture set and the colour grading, each beside its file">
+- Vibrant Visuals › Texture set: `metalness_emissive_roughness_subsurface` as *Not set*, four *Values* from 0 to
+  255 (`metalness`, `emissive`, `roughness`, `subsurface`) or a *Texture*, which Oxygen can make from the colour
+  texture and shows with a key to its channels.
+- Vibrant Visuals › Color grading (`color_grading/color_grading.json`): the tone mapping `operator` and the
+  midtones' `saturation`, `contrast`, `gain`, `offset` and `gamma`.
+- Vibrant Visuals › Lighting (`lighting/global.json`): the `illuminance` and `color` of the sun, the moon and
+  the ambient light, as one value or by time of day, with `orbital_offset_degrees` and the emissive
+  `desaturation`.
+- The Documentation opens inside Oxygen (*Help › Documentation*): the guide, writing Molang and how the preview
+  matches the game, with every section in a list and a search over all three.
+  <br><img src="https://github.com/dev-hydrogen/oxygen/raw/main/docs/media/0.4.0/documentation.png" width="520" alt="The Documentation, open on effects on an entity">
+- Explanations on demand, in place of the paragraphs panels used to carry. Rest the pointer on a label for what
+  it is and, for anything the game reads, the file and key that hold it (`emitter_rate_steady › spawn_rate` on
+  *Rate*). A small *?* has a longer note: click it to keep the note open, with a link to the section of the
+  Documentation that covers it.
+- A layout button in the top bar. It names the current layout, switches to another, resets the current one, and
+  picks how the Inspector groups its fields (by category or by evaluation phase).
+- Inspector categories fold shut with a click on their name, and each can open in a tab of its own to move,
+  dock and close like any panel (the arrow at the right of its name, a right-click, or the View menu). The
+  Inspector leaves the category out meanwhile.
+- The Graph panel samples up to 300 particles instead of the first six. A shaded band shows the range of
+  values across all of them at each age (darker: the middle 80 %), the bright line is the particle nearest the
+  median, and the thin lines are a few others picked to differ as much as possible. Point at the plot to read
+  the values at that age.
+  <br><img src="https://github.com/dev-hydrogen/oxygen/raw/main/docs/media/0.4.0/graph.png" width="520" alt="The Graph panel: the spread of 300 particles and a few of them as lines">
+- A material that isn't one of the game's four: *Custom…* in the Inspector's Material takes any name, and the
+  materials a pack defines in `materials/particles.material` are listed. The preview draws one as the material
+  it inherits from, or as its name suggests, and says which.
+- The Scene panel's *Other effects* field offers the other open effects and the ones in the effect's pack.
+- Closing an effect with unsaved changes asks in Oxygen's own window, with *Save*, *Don't save* and *Cancel*.
+  Resetting the settings or the keys, and restarting to update, ask the same way.
+- A status message that names a saved file (an effect, a screenshot, a recording) can be clicked to show the
+  file in its folder, in the desktop app and in VS Code. Messages about captures stay twice as long.
+- The desktop app's file dialogs open where they were last used: one place for packs, one for particle files,
+  one for texture images. A new effect is saved into the open pack's `particles` folder to begin with.
+
+### Changed
+
+- Panels say much less. The paragraphs under fields and sections are gone: what was redundant is deleted, what
+  wasn't is a hover or a *?*, and the mechanics are in the Documentation. Text that stays is about the state
+  right now (a count, a warning that applies).
+- A label in the code typeface is a key the game reads from a file, written as the file writes it; a label in
+  the ordinary typeface only sets up the preview. In the Scene panel, *Spawn on it* is now *Spawned by*
+  (/particle, Script API or *Animation*), and *Follows it* is `bind_to_actor`, beside `locator`: the two keys of
+  the animation's `particle_effects` entry. *Scale* and *Size* are `scale` and `collision_box`, *Goes away* is
+  *Despawns*, and the Context panel's pre-effect script is `pre_effect_script`.
+- The Scene panel is one of the tool tabs, and its sections (Spawn, Entity, World, Blocks, Other effects) fold.
+  The stand-in entity shows only while the effect is spawned by an animation, and locators are listed with it.
+- The Debug panel's readout is a table whose columns line up: `v.particle_age` and `v.particle_lifetime` on
+  rows of their own, x, y and z named, the colour from 0 to 1 as the game has it (with 0–255 and hex below, and
+  a swatch that enlarges), and the randoms named `v.particle_random_N` and `v.emitter_random_N`.
+  <br><img src="https://github.com/dev-hydrogen/oxygen/raw/main/docs/media/0.4.0/debug.png" width="420" alt="The Debug panel with a particle picked">
+- The Context panel's *Variables in* is *Inputs* (it lists temps and context values too), temps are rows in
+  *Data flow* with the fields that set and read them, and where the panel is wide the scenario and the data
+  flow sit side by side.
+- The emitter rate *Burst* is *Instant*, and the material *Translucent* is *Blend*, as the game names them. The
+  spawn mode *Entity* is *Animation*.
+- The start screen shows the full logo, and a pack opened from it can be browsed there.
+- Settings rows keep their explanations behind a *?*. *About › Engine* lists the engine, Molang and game data
+  versions only.
+- A texture set is saved with its values on one line (`[0, 255, 204, 0]`).
+- A window layout saved by an earlier Oxygen is brought up to date when it's first opened: the file browser
+  takes the Outliner's place and the Scene joins the tool tabs.
+
+### Removed
+
+- The Outliner panel. Its lists of curves and events repeated the Curves and Events panels, and the open effects
+  are the tabs.
+
 ## Oxygen 0.3.0
 
 ### Added

@@ -126,13 +126,14 @@ await page2.waitForTimeout(2500);
 const baseFps = await page2.evaluate(() => Number(document.querySelector('[data-fps]')?.getAttribute('data-fps') ?? 0));
 console.log(`info a light effect renders at ${baseFps} fps`);
 
-// heavy scenes spread independent emitters over worker threads (the desktop CSP allows them)
+// heavy scenes spread independent emitters over worker threads (the desktop CSP allows them). An emitter holds
+// at most 1,000 particles wherever it's spawned, so a heavy scene is many emitters: 16 here
 const heavy = {
 	format_version: '1.10.0',
 	particle_effect: {
 		description: { identifier: 'bench:heavy', basic_render_parameters: { material: 'particles_alpha', texture: 'textures/particle/particles' } },
 		components: {
-			'minecraft:emitter_rate_instant': { num_particles: 8000 },
+			'minecraft:emitter_rate_instant': { num_particles: 1000 },
 			'minecraft:emitter_lifetime_once': { active_time: 100 },
 			'minecraft:particle_lifetime_expression': { max_lifetime: 100 },
 			'minecraft:particle_motion_parametric': { relative_position: ['math.cos(v.particle_age * 90 + v.particle_random_1 * 360) * 3', 'v.particle_random_2', 'math.sin(v.particle_age * 90 + v.particle_random_1 * 360) * 3'] },
@@ -144,7 +145,7 @@ await page2.evaluate((text) => window.oxygen.open({ file: { name: 'heavy.particl
 await page2.evaluate(() => {
 	const s = window.oxygen.active;
 	s.setSpawnMode('entity');
-	for (let i = 0; i < 3; i++) s.spawn();
+	for (let i = 0; i < 15; i++) s.spawn();
 });
 await page2.waitForFunction(() => window.oxygen.active.parallel.engaged, null, { timeout: 10000 }).catch(() => {});
 const par = await page2.evaluate(() => ({ engaged: window.oxygen.active.parallel.engaged, unavailable: window.oxygen.active.parallel.unavailable, remote: window.oxygen.active.parallel.remote.size }));
@@ -152,11 +153,11 @@ check(par.engaged && par.remote > 1, `independent emitters run on worker threads
 // the real GPU draws every particle (Electron): read the viewport's frame rate once it settles
 await page2.waitForTimeout(3000);
 const fps = await page2.evaluate(() => Number(document.querySelector('[data-fps]')?.getAttribute('data-fps') ?? 0));
-check(fps >= 55, `32,000 particles render at ${fps} fps (display refresh caps it)`);
+check(fps >= 55, `16,000 particles render at ${fps} fps (display refresh caps it)`);
 await page2.evaluate(() => (window.oxygen.active.playing = false));
 await page2.waitForFunction(() => !window.oxygen.active.parallel.engaged, null, { timeout: 10000 }).catch(() => {});
 const back = await page2.evaluate(() => ({ local: window.oxygen.active.world.emitters.length, particles: window.oxygen.active.world.particleCount }));
-check(back.local === 4 && back.particles === 32000, `pausing brings them back (${JSON.stringify(back)})`);
+check(back.local === 16 && back.particles === 16000, `pausing brings them back (${JSON.stringify(back)})`);
 
 // an example's child effects are the other examples: the finale's rockets burst
 const finale = readFileSync(new URL('../packages/ui/static/examples/finale_launcher.particle.json', import.meta.url), 'utf8');

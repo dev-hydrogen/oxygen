@@ -108,7 +108,10 @@ export async function writePackFile(webview: vscode.Webview, pack: PackIndex, fi
 	try {
 		const root = await pack.root(file);
 		if (root) {
-			await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(root, path), bytes);
+			const target = vscode.Uri.joinPath(root, path);
+			// lighting/ or color_grading/ may not be in the pack yet
+			await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(target, '..'));
+			await vscode.workspace.fs.writeFile(target, bytes);
 			ok = true;
 		}
 	} catch {

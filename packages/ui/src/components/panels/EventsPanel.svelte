@@ -97,7 +97,7 @@
 				{#key current}<EventNode {session} path={joinPath('particle_effect/events', current)} />{/key}
 			</div>
 		{:else}
-			<p class="empty">Events run expressions, spawn other effects or play sounds when something happens: creation, expiry, a timeline time, a collision.</p>
+			<p class="empty">No events yet.</p>
 		{/if}
 		</div>
 	</div>
